@@ -401,10 +401,17 @@ def _suffix_obs(value: bytes | None) -> Obs:
     return Obs("bytes", data=value)
 
 
+def _big_count(count: int, until_nul: int) -> int:
+    """A negative count is a size_t wider than a signed int. Stop at the terminator."""
+    if count < 0:
+        return until_nul
+    return count
+
+
 def _strncmp(left: bytes, right: bytes, count: int) -> int:
     aa = _cstr(left)
     bb = _cstr(right)
-    limit = count if count >= 0 else 0
+    limit = _big_count(count, max(len(aa), len(bb)) + 1)
     for index in range(limit):
         byte_a = aa[index] if index < len(aa) else 0
         byte_b = bb[index] if index < len(bb) else 0
@@ -461,7 +468,7 @@ def _strnstr(hay: bytes, needle: bytes, count: int) -> bytes | None:
     needle_c = _cstr(needle)
     if needle_c == b"":
         return hay_c
-    limit = count if count >= 0 else 0
+    limit = _big_count(count, len(hay_c) + 1)
     index = 0
     while index < len(hay_c) and index < limit:
         step = 0
@@ -687,6 +694,10 @@ def classify(case: dict, declared: set[str] | None) -> Action:
                 bound=Bound(case, SPECS[function], loop=loop, loop_mode=f"put:{fd}"),
             )
     kind = case["kind"]
+    if kind == "crash":
+        return Action("skip", "crash helper has no arguments")
+    if kind == "guard":
+        return Action("skip", "guard helper has no arguments")
     if kind not in RUN_KINDS:
         return Action("skip", "not a direct input")
     if any(
@@ -735,6 +746,11 @@ def _e_bytes(value: str) -> bytes | None:
 
 
 def grade(case: dict, spec: Spec, student: Obs, bound: Bound | None = None) -> tuple[str, str]:
+    expected = case.get("expected")
+    if isinstance(expected, dict) and expected.get("type") == "ub":
+        return _grade_ub(str(expected.get("value") or "crash"), student)
+    if isinstance(expected, dict) and expected.get("type") == "guard":
+        return _grade_guard(student)
     if student.kind == "crash":
         name = _SIGNALS.get(student.intval, f"signal {student.intval}")
         return "fail", name
@@ -763,6 +779,103 @@ def grade(case: dict, spec: Spec, student: Obs, bound: Bound | None = None) -> t
             return _grade_ctype(expected, student)
         return _grade_stored(expected, student)
     return "fail", "no oracle"
+
+
+def _sig_name(sig: int) -> str:
+    return _SIGNALS.get(sig, f"signal {sig}")
+
+
+def _ub_parts(student: Obs) -> tuple[int, ...] | None:
+    if student.kind != "ub":
+        return None
+    text = student.data.decode("ascii", "replace")
+    if not text:
+        return None
+    try:
+        return tuple(int(part) for part in text.split(","))
+    except ValueError:
+        return None
+
+
+def _grade_ub(mode: str, student: Obs) -> tuple[str, str]:
+    """Part 1 must follow libc, including a crash.
+
+    libc crashed and the function returned: warning.
+    The function crashed and libc did not: fail.
+    Both crashed: pass.
+    """
+    parts = _ub_parts(student)
+    if parts is None or len(parts) < 2:
+        if student.kind == "crash":
+            return "fail", _sig_name(student.intval)
+        return "fail", "could not run the libc crash probe"
+    libc_sig, ft_sig = parts[0], parts[1]
+    if libc_sig < 0 or ft_sig < 0:
+        return "fail", "could not run the libc crash probe"
+    if libc_sig and ft_sig:
+        return "pass", f"both crashed ({_sig_name(ft_sig)}), matches libc"
+    if libc_sig and not ft_sig:
+        return (
+            "warn",
+            f"your function returned, libc crashed ({_sig_name(libc_sig)}). "
+            "Expected a crash. Undefined behavior has to match libc. "
+            "This is a warning, not an error.",
+        )
+    if ft_sig and not libc_sig:
+        return "fail", f"your function crashed ({_sig_name(ft_sig)}), libc did not"
+    if mode == "crash":
+        return "pass", "neither crashed"
+    if len(parts) < 4:
+        return "fail", "could not run the libc crash probe"
+    libc_val, ft_val = parts[2], parts[3]
+    if mode == "nullness":
+        if libc_val == ft_val:
+            shown = "NULL" if ft_val else "non-NULL"
+            return "pass", f"overflow result matches libc ({shown})"
+        libc_text = "NULL" if libc_val else "non-NULL"
+        ft_text = "NULL" if ft_val else "non-NULL"
+        return "fail", f"overflow result does not match libc (libc {libc_text}, yours {ft_text})"
+    if mode == "ctype":
+        if ft_val not in {0, 1}:
+            return "fail", f"yours {ft_val}, supposed 0 or 1 (subject: exactly 1 or 0)"
+        wanted = 1 if libc_val else 0
+        if ft_val == wanted:
+            return "pass", f"yours {ft_val}, supposed {wanted}"
+        return (
+            "warn",
+            f"yours {ft_val}, libc {libc_val}. "
+            "This argument is outside unsigned char and EOF. "
+            "Your return is 0 or 1, which the subject asks for. "
+            "This is a warning, not an error.",
+        )
+    if mode == "soft":
+        if ft_val == libc_val:
+            return "pass", f"yours {ft_val}, libc {libc_val}"
+        return (
+            "warn",
+            f"yours {ft_val}, libc {libc_val}. "
+            "This argument is outside unsigned char and EOF. "
+            "This is a warning, not an error.",
+        )
+    return "fail", "oracle type is not handled"
+
+
+def _grade_guard(student: Obs) -> tuple[str, str]:
+    """Part 2 and the list helpers. The subject does not define these calls."""
+    if student.kind == "crash":
+        return "fail", _sig_name(student.intval)
+    if student.kind != "guard":
+        return "fail", "could not run the crash guard"
+    if student.intval < 0:
+        return "fail", "could not run the crash guard"
+    if student.intval:
+        return (
+            "warn",
+            f"your function crashed ({_sig_name(student.intval)}). "
+            "The subject does not define this call, so a crash is undefined behavior. "
+            "This is a warning, not an error.",
+        )
+    return "pass", "returned without crashing"
 
 
 def _grade_stream(case: dict, student: Obs) -> tuple[str, str]:
@@ -908,6 +1021,10 @@ def parse_result_line(line: str) -> tuple[str, Obs] | None:
         return ident, Obs("void", out=out, err=err)
     if kind == "bad":
         return ident, Obs("bad", data=payload.encode("ascii", "replace"), out=out, err=err)
+    if kind == "ub":
+        return ident, Obs("ub", data=payload.encode("ascii", "replace"), out=out, err=err)
+    if kind == "guard":
+        return ident, Obs("guard", intval=int(payload or "0"), out=out, err=err)
     if kind == "lines":
         count_text, _, rest = payload.partition(":")
         count = int(count_text or "0")
@@ -949,18 +1066,26 @@ class Row:
     skipped: int
     note: str
     declared: bool
+    warned: int = 0
     fails: list[str] = field(default_factory=list)
     samples: list[str] = field(default_factory=list)
+    warns: list[str] = field(default_factory=list)
 
 
 def build_row(function: str, outcomes: list[Outcome], declared: bool) -> Row:
     passed = sum(item.status == "pass" for item in outcomes)
     failed = sum(item.status == "fail" for item in outcomes)
+    warned = sum(item.status == "warn" for item in outcomes)
     skipped = sum(item.status == "skip" for item in outcomes)
     fails = [
         f"{item.suite}  {_trim(item.call)}\n    {item.detail}"
         for item in outcomes
         if item.status == "fail"
+    ][:12]
+    warns = [
+        f"WARN  {item.suite}  {_trim(item.call)}\n    {item.detail}"
+        for item in outcomes
+        if item.status == "warn"
     ][:12]
     samples = [
         f"{item.suite}  {_trim(item.call)}"
@@ -970,6 +1095,8 @@ def build_row(function: str, outcomes: list[Outcome], declared: bool) -> Row:
     note = ""
     if not declared:
         note = "required, not in libft.h"
+    elif warned and not failed:
+        note = "warning"
     elif failed == 0 and passed == 0 and skipped:
         reasons = Counter(item.detail for item in outcomes if item.status == "skip")
         note = reasons.most_common(1)[0][0]
@@ -981,6 +1108,8 @@ def build_row(function: str, outcomes: list[Outcome], declared: bool) -> Row:
         skipped=skipped,
         note=note,
         declared=declared,
+        warned=warned,
         fails=fails,
         samples=samples,
+        warns=warns,
     )

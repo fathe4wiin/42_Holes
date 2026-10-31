@@ -439,7 +439,7 @@ class RunScreen(Screen):
         table.add_column("Part", key="part")
         table.add_column("Pass", key="pass")
         table.add_column("Fail", key="fail")
-        table.add_column("Skip", key="skip")
+        table.add_column("Warn", key="warn")
         table.add_column("Note", key="note")
         self._start()
 
@@ -478,7 +478,11 @@ class RunScreen(Screen):
     def _put(self, row) -> None:
         self.rows[row.function] = row
         name = Text(row.function, style="#f4e8e8" if row.declared else "#a06868")
-        note_style = "#ff8f8f" if row.failed or not row.declared else "#c4a8a8"
+        note_style = "#c4a8a8"
+        if row.failed or not row.declared:
+            note_style = "#ff8f8f"
+        elif row.warned:
+            note_style = "#e6c36a"
         if row.note == "running":
             note_style = "#e7c2c2"
         cells = [
@@ -486,11 +490,11 @@ class RunScreen(Screen):
             row.part,
             Text(str(row.passed), style="#8dcea8"),
             Text(str(row.failed), style="#ff6b6b" if row.failed else "#8a7070"),
-            Text(str(row.skipped), style="#c4a8a8"),
+            Text(str(row.warned), style="#e6c36a" if row.warned else "#8a7070"),
             Text(row.note, style=note_style),
         ]
         table = self.query_one("#table", DataTable)
-        keys = ("fn", "part", "pass", "fail", "skip", "note")
+        keys = ("fn", "part", "pass", "fail", "warn", "note")
         if row.function not in self._keys:
             table.add_row(*cells, key=row.function)
             self._keys.add(row.function)
@@ -506,20 +510,18 @@ class RunScreen(Screen):
         missing = ""
         if event.missing:
             missing = "  Missing: " + ", ".join(event.missing[:8])
-        other = ""
-        if event.other:
-            other = f"  Old functions not in this libft: {event.other} tests."
         summary = (
-            f"Pass {event.passed}   Fail {event.failed}   Skip {event.skipped}.{missing}{other}"
+            f"Pass {event.passed}   Fail {event.failed}   Warn {event.warned}.{missing}"
         )
         self.query_one("#banner", Static).update(summary)
         detail = self.query_one("#detail", RichLog)
         if event.log_path:
             detail.write(f"Log: {event.log_path}")
-        detail.write(
-            "Skip counts calls that were not executed. Press g to read what each call means."
+        detail.write("The log lists failures and warnings. Press g for what a warning means.")
+        self.notify(
+            f"{event.passed} passed, {event.failed} failed, {event.warned} warnings",
+            timeout=4,
         )
-        self.notify(f"{event.passed} passed, {event.failed} failed", timeout=4)
 
     def action_guide(self) -> None:
         self.app.push_screen(GuideScreen())
@@ -532,7 +534,7 @@ class RunScreen(Screen):
         detail = self.query_one("#detail", RichLog)
         detail.clear()
         detail.write(f"{row.function}  {row.note}".rstrip())
-        lines = row.fails or row.samples
+        lines = (row.fails + row.warns) or row.samples
         for line in lines:
             detail.write(line)
 

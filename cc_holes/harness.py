@@ -12,6 +12,7 @@ _RUNTIME = r"""
 #include "libft.h"
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>
@@ -399,6 +400,172 @@ static void emit_alloc(const char *id, void *ptr, size_t count, size_t size,
 	free(out_hex);
 	free(err_hex);
 	fflush(stdout);
+}
+
+__attribute__((unused)) static void silence_child(void)
+{
+	int fd;
+
+	alarm(0);
+	signal(SIGSEGV, SIG_DFL);
+	signal(SIGABRT, SIG_DFL);
+	signal(SIGBUS, SIG_DFL);
+	signal(SIGILL, SIG_DFL);
+	signal(SIGFPE, SIG_DFL);
+	signal(SIGALRM, SIG_DFL);
+	signal(SIGPIPE, SIG_DFL);
+	fd = open("/dev/null", O_WRONLY);
+	if (fd >= 0)
+	{
+		dup2(fd, STDOUT_FILENO);
+		dup2(fd, STDERR_FILENO);
+		if (fd > STDERR_FILENO)
+			close(fd);
+	}
+	alarm(1);
+}
+
+#define RUN_PROBE(out, body) \
+	do { \
+		pid_t _pid; \
+		int _st; \
+		_pid = fork(); \
+		if (_pid < 0) \
+			(out) = -1; \
+		else if (_pid == 0) \
+		{ \
+			silence_child(); \
+			body; \
+			_exit(0); \
+		} \
+		else if (waitpid(_pid, &_st, 0) < 0) \
+			(out) = -1; \
+		else if (WIFSIGNALED(_st)) \
+			(out) = WTERMSIG(_st); \
+		else if (WIFEXITED(_st) && WEXITSTATUS(_st) == 0) \
+			(out) = 0; \
+		else \
+			(out) = -1; \
+	} while (0)
+
+__attribute__((unused)) static void emit_ub(const char *id, int libc_sig, int ft_sig)
+{
+	printf("%s\tok\tub\t%d,%d\t\t\n", id, libc_sig, ft_sig);
+	fflush(stdout);
+}
+
+__attribute__((unused)) static void emit_ub_vals(const char *id, int libc_sig, int ft_sig,
+	int libc_val, int ft_val)
+{
+	printf("%s\tok\tub\t%d,%d,%d,%d\t\t\n", id, libc_sig, ft_sig, libc_val, ft_val);
+	fflush(stdout);
+}
+
+__attribute__((unused)) static void emit_guard(const char *id, int sig)
+{
+	printf("%s\tok\tguard\t%d\t\t\n", id, sig);
+	fflush(stdout);
+}
+
+__attribute__((unused)) static int probe_int(int (*fn)(int), int arg, int *value)
+{
+	int fds[2];
+	pid_t pid;
+	int status;
+	int got;
+
+	*value = 0;
+	if (pipe(fds) < 0)
+		return (-1);
+	pid = fork();
+	if (pid < 0)
+	{
+		close(fds[0]);
+		close(fds[1]);
+		return (-1);
+	}
+	if (pid == 0)
+	{
+		close(fds[0]);
+		silence_child();
+		got = fn(arg);
+		if (write(fds[1], &got, sizeof(got)) != (ssize_t)sizeof(got))
+			_exit(2);
+		_exit(0);
+	}
+	close(fds[1]);
+	if (waitpid(pid, &status, 0) < 0)
+	{
+		close(fds[0]);
+		return (-1);
+	}
+	if (WIFSIGNALED(status))
+	{
+		close(fds[0]);
+		return (WTERMSIG(status));
+	}
+	if (read(fds[0], value, sizeof(*value)) != (ssize_t)sizeof(*value))
+	{
+		close(fds[0]);
+		return (-1);
+	}
+	close(fds[0]);
+	if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
+		return (0);
+	return (-1);
+}
+
+__attribute__((unused)) static int probe_calloc(void *(*fn)(size_t, size_t),
+	size_t count, size_t size, int *is_null)
+{
+	int fds[2];
+	pid_t pid;
+	int status;
+	unsigned char flag;
+
+	*is_null = 1;
+	if (pipe(fds) < 0)
+		return (-1);
+	pid = fork();
+	if (pid < 0)
+	{
+		close(fds[0]);
+		close(fds[1]);
+		return (-1);
+	}
+	if (pid == 0)
+	{
+		void *pointer;
+
+		close(fds[0]);
+		silence_child();
+		pointer = fn(count, size);
+		flag = (pointer == 0);
+		if (write(fds[1], &flag, 1) != 1)
+			_exit(2);
+		_exit(0);
+	}
+	close(fds[1]);
+	if (waitpid(pid, &status, 0) < 0)
+	{
+		close(fds[0]);
+		return (-1);
+	}
+	if (WIFSIGNALED(status))
+	{
+		close(fds[0]);
+		return (WTERMSIG(status));
+	}
+	if (read(fds[0], &flag, 1) != 1)
+	{
+		close(fds[0]);
+		return (-1);
+	}
+	close(fds[0]);
+	*is_null = flag;
+	if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
+		return (0);
+	return (-1);
 }
 
 static int finish_child(int fd, pid_t pid, const char *id)

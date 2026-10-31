@@ -80,9 +80,17 @@ LOGO = _render_logo("42_Holes")
 
 SKIP_WHY: dict[str, str] = {
     "not a direct input": (
-        "Fuzzer, speed check, sandbox, or a crash helper with no arguments in this file. "
-        "A crash helper is the case where libc itself crashes. That input is undefined, "
-        "and the subject allows a crash only then. It is not a pass."
+        "Fuzzer, speed check, or sandbox. The file has no bytes to pass in. It is not a pass."
+    ),
+    "crash helper has no arguments": (
+        "The catalog named a libc crash helper and did not store the input. "
+        "The subject suite runs that probe. If libc crashes and your function returns, "
+        "the result is a warning, not a pass and not an error."
+    ),
+    "guard helper has no arguments": (
+        "The catalog named a part 2 guard and did not store the input. "
+        "The subject suite runs that probe. A crash there is a warning, "
+        "because the subject does not define the call."
     ),
     "argument is a harness name": (
         "The catalog stored a name. fsoares mem and dest are 256 bytes of 0x11 "
@@ -103,7 +111,10 @@ SKIP_WHY: dict[str, str] = {
     "no runner for this function yet": (
         "This function is from an older libft. The tester does not call it yet."
     ),
-    "null argument": "The call passes NULL. It is left to the crash checks, which are skipped.",
+    "null argument": (
+        "The catalog call passes NULL and is not run as a value check. "
+        "The subject crash probe covers that input."
+    ),
     "fd is not 1 or 2": "The call writes to a file descriptor other than stdout or stderr.",
     "count is too large to stage": "The size does not fit in a buffer this tester can build.",
     "no libc oracle": "Nothing in the catalog or in libc says what the return should be.",
@@ -111,8 +122,8 @@ SKIP_WHY: dict[str, str] = {
 }
 
 GUIDE = """\
-Skip is not a pass. The subject does not accept a wrong result.
-A skipped row has no input this file can run. Your function can still be wrong.
+The run lists calls that can break a libft. A catalog row that was only a name,
+a C++ check, a fuzzer, or a sandbox program is not listed.
 
 What the subject (v19.2) requires, and this tester checks
   isalpha, isdigit, isalnum, isascii, isprint return exactly 1 or exactly 0.
@@ -122,22 +133,6 @@ What the subject (v19.2) requires, and this tester checks
   memset, bzero, memcpy, memmove, strlcpy, strlcat, strmapi, striteri,
   and every ft_lst* function have subject calls with a real buffer.
   A function the subject names and libft.h does not declare is a Fail.
-
-Why a catalog row is still skipped
-  not a direct input
-      Fuzzer, speed check, or sandbox. No bytes to pass in.
-      A crash row is the case where libc itself crashes. That is undefined.
-      The subject allows a crash only for undefined behavior.
-  argument is a harness name
-      fsoares fills mem and dest with 256 bytes of 0x11. war-machine fills are in main.c.
-      Those calls run. A rand() buffer still has no saved bytes, so that row stays here.
-  check is not a direct call
-      The suite wrote a C or C++ check, such as l->content == (void*)1.
-      The subject list calls are the ones in the subject suite.
-  not in libft.h
-      The header does not declare it. For a subject function this is also a Fail.
-  no runner for this function yet
-      An older function that is not in this subject, such as ft_putchar.
 
 What a call is
   The call is the line you would write, for example:
@@ -156,17 +151,20 @@ What each suite compares
       For the five is* functions, true means 1 and false means 0.
   war-machine
       The bytes the old test printed, including the loops i in 0..47.
-  alelievr
-      Sandbox and speed checks. The file has no input list for them.
 
-Pass and Fail
+Pass, Fail, and Warning
   Pass means your result matched the subject, libc, or the stored value.
-  Fail means the call ran and differed. The line under it is yours, then the supposed result.
-  Select a function in the table to read the calls.
+  Both crashing on the same undefined call is a Pass. That matches libc.
+  Fail means the call ran and differed, or your function crashed where libc did not.
+  Warning means libc crashed and your function returned. The subject says a crash
+  is allowed only for undefined behavior, and part 1 still has to match libc.
+  A warning is not an error. It does not fail the run. Select the function to read it.
+  A part 2 call the subject does not define is a Warning when it crashes, and a Pass
+  when it returns.
 
 The log
   After a run, 42_holes.log is written in the project folder you gave.
-  Every call is there: PASS, FAIL, or SKIP, then yours against the supposed result.
+  It lists FAIL and WARN only. A pass is not written.
 """
 
 CREDITS = """\
@@ -184,44 +182,34 @@ ft_printf and get_next_line are listed. Their runners are not built yet.
 
 
 def write_log(folder: Path, sections: list[tuple[str, list[Outcome]]]) -> Path:
-    """Write every call next to the result it was supposed to produce."""
-    passed = failed = skipped = 0
-    for _name, outcomes in sections:
-        for item in outcomes:
-            if item.status == "pass":
-                passed += 1
-            elif item.status == "fail":
+    """Write failures and warnings. Passes are not logged."""
+    failed = warned = 0
+    blocks: list[str] = []
+    for function, outcomes in sections:
+        rows = [item for item in outcomes if item.status in {"fail", "warn"}]
+        if not rows:
+            continue
+        blocks.append("")
+        blocks.append(f"# {function}")
+        for item in rows:
+            if item.status == "fail":
                 failed += 1
             else:
-                skipped += 1
+                warned += 1
+            blocks.append(f"{item.status.upper():4}  {item.suite}  {item.part}")
+            blocks.append(f"  call: {item.call}")
+            blocks.append(f"  check: {item.detail}")
     lines = [
         "42_Holes",
         TAGLINE,
         f"project: {folder}",
-        f"pass {passed}  fail {failed}  skip {skipped}",
+        f"fail {failed}  warn {warned}",
         "",
-        "Each call is the invocation from the catalog.",
-        "PASS and FAIL show yours, then the supposed result (libc or the stored value).",
-        "SKIP was not executed. The reason is under the call.",
-        "",
-        "Skip reasons",
+        "FAIL is an error. WARN is libc crashing while your function returned,",
+        "or a crash on a call the subject does not define. A warning is not an error.",
+        "Passes are not listed.",
     ]
-    for reason, meaning in SKIP_WHY.items():
-        lines.append(f"  {reason}")
-        lines.append(f"      {meaning}")
-    for function, outcomes in sections:
-        lines.append("")
-        lines.append(f"# {function}")
-        for item in outcomes:
-            lines.append(f"{item.status.upper():4}  {item.suite}  {item.part}")
-            lines.append(f"  call: {item.call}")
-            if item.status == "skip":
-                lines.append(f"  why:  {item.detail}")
-                meaning = SKIP_WHY.get(item.detail)
-                if meaning:
-                    lines.append(f"        {meaning}")
-            else:
-                lines.append(f"  check: {item.detail}")
+    lines.extend(blocks)
     path = folder / "42_holes.log"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path

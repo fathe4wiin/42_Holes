@@ -607,4 +607,621 @@ def subject_cases() -> dict[str, list[dict]]:
             )
         ],
     }
+    for function, extra in _edge_cases().items():
+        groups.setdefault(function, []).extend(extra)
+    for function, extra in _breaker_cases().items():
+        groups.setdefault(function, []).extend(extra)
     return groups
+
+
+def _ub_case(function: str, name: str, call: str, snippet: str, mode: str) -> dict:
+    return {
+        "id": f"subject/{function}/{name}",
+        "function": function,
+        "kind": "expression",
+        "suite": "subject",
+        "call": call,
+        "args": [],
+        "expected": {"type": "ub", "value": mode},
+        "part": "",
+        "snippet": snippet,
+    }
+
+
+def _guard_case(function: str, name: str, call: str, statement: str) -> dict:
+    snippet = (
+        "\tint ft_sig;\n"
+        f"\tRUN_PROBE(ft_sig, {{ {statement} }});\n"
+        "\temit_guard(id, ft_sig);\n"
+    )
+    return {
+        "id": f"subject/{function}/{name}",
+        "function": function,
+        "kind": "expression",
+        "suite": "subject",
+        "call": call,
+        "args": [],
+        "expected": {"type": "guard", "value": "defined-by-probe"},
+        "part": "",
+        "snippet": snippet,
+    }
+
+
+def _crash_case(function: str, name: str, call: str, libc: str, ft: str) -> dict:
+    snippet = (
+        "\tint libc_sig;\n"
+        "\tint ft_sig;\n"
+        f"\tRUN_PROBE(libc_sig, {{ {libc} }});\n"
+        f"\tRUN_PROBE(ft_sig, {{ {ft} }});\n"
+        "\temit_ub(id, libc_sig, ft_sig);\n"
+    )
+    return _ub_case(function, name, call, snippet, "crash")
+
+
+def _value_case(function: str, name: str, call: str, number: str, expected: str) -> dict:
+    return {
+        "id": f"subject/{function}/{name}",
+        "function": function,
+        "kind": "expression",
+        "suite": "subject",
+        "call": call,
+        "args": [{"type": "int", "value": number}],
+        "expected": {"type": "int", "value": expected},
+        "part": "",
+    }
+
+
+_EXTRAS = (
+    (-2, "-2"),
+    (-128, "-128"),
+    (-129, "-129"),
+    (-255, "-255"),
+    (-256, "-256"),
+    (256, "256"),
+    (512, "512"),
+    (1024, "1024"),
+    (4096, "4096"),
+    (2147483647, "2147483647"),
+    (-2147483648, "(-2147483647 - 1)"),
+)
+
+
+def _int_probe(function: str, number: int, literal: str, mode: str) -> dict:
+    libc = function[3:]
+    snippet = (
+        "\tint libc_sig;\n"
+        "\tint ft_sig;\n"
+        "\tint libc_val;\n"
+        "\tint ft_val;\n"
+        "\tint (*std_fn)(int);\n"
+        "\tint (*ft_fn)(int);\n"
+        "\tlibc_val = 0;\n"
+        "\tft_val = 0;\n"
+        f"\tstd_fn = {libc};\n"
+        f"\tft_fn = {function};\n"
+        f"\tlibc_sig = probe_int(std_fn, {literal}, &libc_val);\n"
+        f"\tft_sig = probe_int(ft_fn, {literal}, &ft_val);\n"
+        "\temit_ub_vals(id, libc_sig, ft_sig, libc_val, ft_val);\n"
+    )
+    slug = str(number) if number >= 0 else f"m{-number}"
+    return _ub_case(function, f"extra-{slug}", f"{function}({number})", snippet, mode)
+
+
+def _edge_cases() -> dict[str, list[dict]]:
+    """Subject rules first, then libc crash probes and undefined edges.
+
+    A part 1 crash probe compares the signal with libc.
+    libc crashed and the function returned is a warning.
+    The function crashed and libc did not is a failure.
+    """
+    groups: dict[str, list[dict]] = {
+        "ft_strlen": [
+            _crash_case(
+                "ft_strlen",
+                "null",
+                "ft_strlen(NULL)",
+                "const char *s = 0; size_t (*p)(const char *) = (strlen); volatile size_t n = p(s); (void)n;",
+                "const char *s = 0; size_t (*p)(const char *) = ft_strlen; volatile size_t n = p(s); (void)n;",
+            )
+        ],
+        "ft_memset": [
+            _crash_case(
+                "ft_memset",
+                "null-zero",
+                "ft_memset(NULL, 0, 0)",
+                "char *s = 0; volatile size_t n = 0; void *(*p)(void *, int, size_t) = (memset); volatile void *r = p(s, 0, n); (void)r;",
+                "char *s = 0; volatile size_t n = 0; void *(*p)(void *, int, size_t) = ft_memset; volatile void *r = p(s, 0, n); (void)r;",
+            ),
+            _crash_case(
+                "ft_memset",
+                "null-one",
+                "ft_memset(NULL, 'a', 1)",
+                "char *s = 0; void *(*p)(void *, int, size_t) = (memset); volatile void *r = p(s, 'a', 1); (void)r;",
+                "char *s = 0; void *(*p)(void *, int, size_t) = ft_memset; volatile void *r = p(s, 'a', 1); (void)r;",
+            ),
+        ],
+        "ft_bzero": [
+            _crash_case(
+                "ft_bzero",
+                "null-zero",
+                "ft_bzero(NULL, 0)",
+                "void bzero(void *, size_t); char *s = 0; volatile size_t n = 0; void (*p)(void *, size_t) = bzero; p(s, n);",
+                "char *s = 0; volatile size_t n = 0; void (*p)(void *, size_t) = ft_bzero; p(s, n);",
+            ),
+            _crash_case(
+                "ft_bzero",
+                "null-one",
+                "ft_bzero(NULL, 1)",
+                "void bzero(void *, size_t); char *s = 0; void (*p)(void *, size_t) = bzero; p(s, 1);",
+                "char *s = 0; void (*p)(void *, size_t) = ft_bzero; p(s, 1);",
+            ),
+        ],
+        "ft_memcpy": [
+            _crash_case(
+                "ft_memcpy",
+                "null-zero",
+                "ft_memcpy(NULL, NULL, 0)",
+                "char *s = 0; volatile size_t n = 0; void *(*p)(void *, const void *, size_t) = (memcpy); volatile void *r = p(s, s, n); (void)r;",
+                "char *s = 0; volatile size_t n = 0; void *(*p)(void *, const void *, size_t) = ft_memcpy; volatile void *r = p(s, s, n); (void)r;",
+            ),
+            _crash_case(
+                "ft_memcpy",
+                "null-two",
+                'ft_memcpy(NULL, "ab", 2)',
+                'char *s = 0; void *(*p)(void *, const void *, size_t) = (memcpy); volatile void *r = p(s, "ab", 2); (void)r;',
+                'char *s = 0; void *(*p)(void *, const void *, size_t) = ft_memcpy; volatile void *r = p(s, "ab", 2); (void)r;',
+            ),
+        ],
+        "ft_memmove": [
+            _crash_case(
+                "ft_memmove",
+                "null-zero",
+                "ft_memmove(NULL, NULL, 0)",
+                "char *s = 0; volatile size_t n = 0; void *(*p)(void *, const void *, size_t) = (memmove); volatile void *r = p(s, s, n); (void)r;",
+                "char *s = 0; volatile size_t n = 0; void *(*p)(void *, const void *, size_t) = ft_memmove; volatile void *r = p(s, s, n); (void)r;",
+            ),
+            _crash_case(
+                "ft_memmove",
+                "null-two",
+                'ft_memmove(NULL, "ab", 2)',
+                'char *s = 0; void *(*p)(void *, const void *, size_t) = (memmove); volatile void *r = p(s, "ab", 2); (void)r;',
+                'char *s = 0; void *(*p)(void *, const void *, size_t) = ft_memmove; volatile void *r = p(s, "ab", 2); (void)r;',
+            ),
+        ],
+        "ft_strlcpy": [
+            _crash_case(
+                "ft_strlcpy",
+                "both-null",
+                "ft_strlcpy(NULL, NULL, 0)",
+                "size_t strlcpy(char *, const char *, size_t); char *d = 0; const char *s = 0; volatile size_t n = 0; size_t (*p)(char *, const char *, size_t) = strlcpy; volatile size_t r = p(d, s, n); (void)r;",
+                "char *d = 0; const char *s = 0; volatile size_t n = 0; size_t (*p)(char *, const char *, size_t) = ft_strlcpy; volatile size_t r = p(d, s, n); (void)r;",
+            ),
+            _crash_case(
+                "ft_strlcpy",
+                "dest-null",
+                'ft_strlcpy(NULL, "abc", 4)',
+                'size_t strlcpy(char *, const char *, size_t); char *d = 0; size_t (*p)(char *, const char *, size_t) = strlcpy; volatile size_t r = p(d, "abc", 4); (void)r;',
+                'char *d = 0; size_t (*p)(char *, const char *, size_t) = ft_strlcpy; volatile size_t r = p(d, "abc", 4); (void)r;',
+            ),
+            _crash_case(
+                "ft_strlcpy",
+                "src-null",
+                "ft_strlcpy(dst, NULL, 4)",
+                "size_t strlcpy(char *, const char *, size_t); char d[8]; const char *s = 0; d[0] = 'h'; d[1] = 'i'; d[2] = 0; size_t (*p)(char *, const char *, size_t) = strlcpy; volatile size_t r = p(d, s, 4); (void)r;",
+                "char d[8]; const char *s = 0; d[0] = 'h'; d[1] = 'i'; d[2] = 0; size_t (*p)(char *, const char *, size_t) = ft_strlcpy; volatile size_t r = p(d, s, 4); (void)r;",
+            ),
+        ],
+        "ft_strlcat": [
+            _crash_case(
+                "ft_strlcat",
+                "both-null",
+                "ft_strlcat(NULL, NULL, 0)",
+                "size_t strlcat(char *, const char *, size_t); char *d = 0; const char *s = 0; volatile size_t n = 0; size_t (*p)(char *, const char *, size_t) = strlcat; volatile size_t r = p(d, s, n); (void)r;",
+                "char *d = 0; const char *s = 0; volatile size_t n = 0; size_t (*p)(char *, const char *, size_t) = ft_strlcat; volatile size_t r = p(d, s, n); (void)r;",
+            ),
+            _crash_case(
+                "ft_strlcat",
+                "dest-null",
+                'ft_strlcat(NULL, "abc", 5)',
+                'size_t strlcat(char *, const char *, size_t); char *d = 0; size_t (*p)(char *, const char *, size_t) = strlcat; volatile size_t r = p(d, "abc", 5); (void)r;',
+                'char *d = 0; size_t (*p)(char *, const char *, size_t) = ft_strlcat; volatile size_t r = p(d, "abc", 5); (void)r;',
+            ),
+            _crash_case(
+                "ft_strlcat",
+                "src-null",
+                "ft_strlcat(dst, NULL, 8)",
+                "size_t strlcat(char *, const char *, size_t); char d[16]; const char *s = 0; d[0] = 'h'; d[1] = 'i'; d[2] = 0; size_t (*p)(char *, const char *, size_t) = strlcat; volatile size_t r = p(d, s, 8); (void)r;",
+                "char d[16]; const char *s = 0; d[0] = 'h'; d[1] = 'i'; d[2] = 0; size_t (*p)(char *, const char *, size_t) = ft_strlcat; volatile size_t r = p(d, s, 8); (void)r;",
+            ),
+        ],
+        "ft_strchr": [
+            _crash_case(
+                "ft_strchr",
+                "null-a",
+                "ft_strchr(NULL, 'a')",
+                "const char *s = 0; char *(*p)(const char *, int) = (strchr); volatile void *r = p(s, 'a'); (void)r;",
+                "const char *s = 0; char *(*p)(const char *, int) = ft_strchr; volatile void *r = p(s, 'a'); (void)r;",
+            ),
+            _crash_case(
+                "ft_strchr",
+                "null-zero",
+                "ft_strchr(NULL, 0)",
+                "const char *s = 0; char *(*p)(const char *, int) = (strchr); volatile void *r = p(s, 0); (void)r;",
+                "const char *s = 0; char *(*p)(const char *, int) = ft_strchr; volatile void *r = p(s, 0); (void)r;",
+            ),
+        ],
+        "ft_strrchr": [
+            _crash_case(
+                "ft_strrchr",
+                "null-a",
+                "ft_strrchr(NULL, 'a')",
+                "const char *s = 0; char *(*p)(const char *, int) = (strrchr); volatile void *r = p(s, 'a'); (void)r;",
+                "const char *s = 0; char *(*p)(const char *, int) = ft_strrchr; volatile void *r = p(s, 'a'); (void)r;",
+            )
+        ],
+        "ft_strncmp": [
+            _crash_case(
+                "ft_strncmp",
+                "both-null",
+                "ft_strncmp(NULL, NULL, 0)",
+                "const char *s = 0; volatile size_t n = 0; int (*p)(const char *, const char *, size_t) = (strncmp); volatile int r = p(s, s, n); (void)r;",
+                "const char *s = 0; volatile size_t n = 0; int (*p)(const char *, const char *, size_t) = ft_strncmp; volatile int r = p(s, s, n); (void)r;",
+            ),
+            _crash_case(
+                "ft_strncmp",
+                "left-null",
+                'ft_strncmp(NULL, "a", 1)',
+                'const char *s = 0; int (*p)(const char *, const char *, size_t) = (strncmp); volatile int r = p(s, "a", 1); (void)r;',
+                'const char *s = 0; int (*p)(const char *, const char *, size_t) = ft_strncmp; volatile int r = p(s, "a", 1); (void)r;',
+            ),
+            _crash_case(
+                "ft_strncmp",
+                "right-null",
+                'ft_strncmp("a", NULL, 1)',
+                'const char *s = 0; int (*p)(const char *, const char *, size_t) = (strncmp); volatile int r = p("a", s, 1); (void)r;',
+                'const char *s = 0; int (*p)(const char *, const char *, size_t) = ft_strncmp; volatile int r = p("a", s, 1); (void)r;',
+            ),
+        ],
+        "ft_memchr": [
+            _crash_case(
+                "ft_memchr",
+                "null-zero",
+                "ft_memchr(NULL, 'a', 0)",
+                "char *s = 0; volatile size_t n = 0; void *(*p)(const void *, int, size_t) = (memchr); volatile void *r = p(s, 'a', n); (void)r;",
+                "char *s = 0; volatile size_t n = 0; void *(*p)(const void *, int, size_t) = ft_memchr; volatile void *r = p(s, 'a', n); (void)r;",
+            ),
+            _crash_case(
+                "ft_memchr",
+                "null-one",
+                "ft_memchr(NULL, 'a', 1)",
+                "char *s = 0; void *(*p)(const void *, int, size_t) = (memchr); volatile void *r = p(s, 'a', 1); (void)r;",
+                "char *s = 0; void *(*p)(const void *, int, size_t) = ft_memchr; volatile void *r = p(s, 'a', 1); (void)r;",
+            ),
+        ],
+        "ft_memcmp": [
+            _crash_case(
+                "ft_memcmp",
+                "null-zero",
+                "ft_memcmp(NULL, NULL, 0)",
+                "char *s = 0; volatile size_t n = 0; int (*p)(const void *, const void *, size_t) = (memcmp); volatile int r = p(s, s, n); (void)r;",
+                "char *s = 0; volatile size_t n = 0; int (*p)(const void *, const void *, size_t) = ft_memcmp; volatile int r = p(s, s, n); (void)r;",
+            ),
+            _crash_case(
+                "ft_memcmp",
+                "null-one",
+                'ft_memcmp(NULL, "a", 1)',
+                'char *s = 0; int (*p)(const void *, const void *, size_t) = (memcmp); volatile int r = p(s, "a", 1); (void)r;',
+                'char *s = 0; int (*p)(const void *, const void *, size_t) = ft_memcmp; volatile int r = p(s, "a", 1); (void)r;',
+            ),
+        ],
+        "ft_strnstr": [
+            _crash_case(
+                "ft_strnstr",
+                "null-zero",
+                'ft_strnstr(NULL, "a", 0)',
+                'char *strnstr(const char *, const char *, size_t); const char *s = 0; volatile size_t n = 0; char *(*p)(const char *, const char *, size_t) = strnstr; volatile void *r = p(s, "a", n); (void)r;',
+                'const char *s = 0; volatile size_t n = 0; char *(*p)(const char *, const char *, size_t) = ft_strnstr; volatile void *r = p(s, "a", n); (void)r;',
+            ),
+            _crash_case(
+                "ft_strnstr",
+                "null-one",
+                'ft_strnstr(NULL, "a", 1)',
+                'char *strnstr(const char *, const char *, size_t); const char *s = 0; char *(*p)(const char *, const char *, size_t) = strnstr; volatile void *r = p(s, "a", 1); (void)r;',
+                'const char *s = 0; char *(*p)(const char *, const char *, size_t) = ft_strnstr; volatile void *r = p(s, "a", 1); (void)r;',
+            ),
+            _crash_case(
+                "ft_strnstr",
+                "needle-null",
+                'ft_strnstr("abc", NULL, 3)',
+                'char *strnstr(const char *, const char *, size_t); const char *s = 0; char *(*p)(const char *, const char *, size_t) = strnstr; volatile void *r = p("abc", s, 3); (void)r;',
+                'const char *s = 0; char *(*p)(const char *, const char *, size_t) = ft_strnstr; volatile void *r = p("abc", s, 3); (void)r;',
+            ),
+        ],
+        "ft_atoi": [
+            _crash_case(
+                "ft_atoi",
+                "null",
+                "ft_atoi(NULL)",
+                "const char *s = 0; int (*p)(const char *) = (atoi); volatile int r = p(s); (void)r;",
+                "const char *s = 0; int (*p)(const char *) = ft_atoi; volatile int r = p(s); (void)r;",
+            )
+        ],
+        "ft_strdup": [
+            _crash_case(
+                "ft_strdup",
+                "null",
+                "ft_strdup(NULL)",
+                "const char *s = 0; char *(*p)(const char *) = (strdup); volatile void *r = p(s); (void)r;",
+                "const char *s = 0; char *(*p)(const char *) = ft_strdup; volatile void *r = p(s); (void)r;",
+            )
+        ],
+        "ft_calloc": [
+            _ub_case(
+                "ft_calloc",
+                "overflow",
+                "ft_calloc((size_t)-1, (size_t)-1)",
+                """
+	int libc_sig;
+	int ft_sig;
+	int libc_null;
+	int ft_null;
+	void *(*std_fn)(size_t, size_t);
+	void *(*ft_fn)(size_t, size_t);
+	libc_null = 1;
+	ft_null = 1;
+	std_fn = calloc;
+	ft_fn = ft_calloc;
+	libc_sig = probe_calloc(std_fn, (size_t)-1, (size_t)-1, &libc_null);
+	ft_sig = probe_calloc(ft_fn, (size_t)-1, (size_t)-1, &ft_null);
+	emit_ub_vals(id, libc_sig, ft_sig, libc_null, ft_null);
+""",
+                "nullness",
+            )
+        ],
+        "ft_itoa": [
+            {
+                "id": "subject/ft_itoa/int-min",
+                "function": "ft_itoa",
+                "kind": "expression",
+                "suite": "subject",
+                "call": "ft_itoa(-2147483648)",
+                "args": [{"type": "int", "value": "-2147483648"}],
+                "expected": {"type": "str", "value": "-2147483648"},
+                "part": "part 2",
+            }
+        ],
+        "ft_substr": [
+            _guard_case("ft_substr", "null-zero", "ft_substr(NULL, 0, 0)", "const char *s = 0; free(ft_substr(s, 0, 0));"),
+            _guard_case("ft_substr", "null-len", "ft_substr(NULL, 0, 5)", "const char *s = 0; free(ft_substr(s, 0, 5));"),
+            _guard_case("ft_substr", "null-start", "ft_substr(NULL, 3, 1)", "const char *s = 0; free(ft_substr(s, 3, 1));"),
+        ],
+        "ft_strjoin": [
+            _guard_case("ft_strjoin", "both-null", "ft_strjoin(NULL, NULL)", "const char *a = 0; const char *b = 0; free(ft_strjoin(a, b));"),
+            _guard_case("ft_strjoin", "left-null", 'ft_strjoin(NULL, "abc")', 'const char *a = 0; free(ft_strjoin(a, "abc"));'),
+            _guard_case("ft_strjoin", "right-null", 'ft_strjoin("abc", NULL)', 'const char *b = 0; free(ft_strjoin("abc", b));'),
+        ],
+        "ft_strtrim": [
+            _guard_case("ft_strtrim", "both-null", "ft_strtrim(NULL, NULL)", "const char *a = 0; const char *b = 0; free(ft_strtrim(a, b));"),
+            _guard_case("ft_strtrim", "string-null", 'ft_strtrim(NULL, " .")', 'const char *a = 0; free(ft_strtrim(a, " ."));'),
+            _guard_case("ft_strtrim", "set-null", 'ft_strtrim("  abc  ", NULL)', 'const char *b = 0; free(ft_strtrim("  abc  ", b));'),
+        ],
+        "ft_split": [
+            _guard_case("ft_split", "null-space", "ft_split(NULL, ' ')", "const char *s = 0; free(ft_split(s, ' '));"),
+            _guard_case("ft_split", "null-zero", "ft_split(NULL, 0)", "const char *s = 0; free(ft_split(s, '\\0'));"),
+        ],
+        "ft_strmapi": [
+            _guard_case(
+                "ft_strmapi",
+                "string-null",
+                "ft_strmapi(NULL, f)",
+                "const char *s = 0; free(ft_strmapi(s, subject_upper));",
+            ),
+            _guard_case(
+                "ft_strmapi",
+                "function-null",
+                'ft_strmapi("abc", NULL)',
+                "char (*f)(unsigned int, char) = 0; free(ft_strmapi(\"abc\", f));",
+            ),
+        ],
+        "ft_striteri": [
+            _guard_case(
+                "ft_striteri",
+                "string-null",
+                "ft_striteri(NULL, f)",
+                "char *s = 0; ft_striteri(s, subject_star);",
+            ),
+            _guard_case(
+                "ft_striteri",
+                "function-null",
+                'ft_striteri("abc", NULL)',
+                "void (*f)(unsigned int, char *) = 0; char buf[] = \"abc\"; ft_striteri(buf, f);",
+            ),
+        ],
+        "ft_putchar_fd": [
+            _guard_case("ft_putchar_fd", "bad-fd", "ft_putchar_fd('a', -1)", "ft_putchar_fd('a', -1);"),
+        ],
+        "ft_putstr_fd": [
+            _guard_case("ft_putstr_fd", "null", "ft_putstr_fd(NULL, 1)", "char *s = 0; ft_putstr_fd(s, 1);"),
+            _guard_case("ft_putstr_fd", "bad-fd", 'ft_putstr_fd("abc", -1)', 'ft_putstr_fd("abc", -1);'),
+        ],
+        "ft_putendl_fd": [
+            _guard_case("ft_putendl_fd", "null", "ft_putendl_fd(NULL, 1)", "char *s = 0; ft_putendl_fd(s, 1);"),
+            _guard_case("ft_putendl_fd", "bad-fd", 'ft_putendl_fd("abc", -1)', 'ft_putendl_fd("abc", -1);'),
+        ],
+        "ft_putnbr_fd": [
+            _guard_case(
+                "ft_putnbr_fd",
+                "bad-fd",
+                "ft_putnbr_fd(INT_MIN, -1)",
+                "ft_putnbr_fd((-2147483647 - 1), -1);",
+            )
+        ],
+    }
+    for function in ("ft_isalpha", "ft_isdigit", "ft_isalnum", "ft_isascii", "ft_isprint"):
+        groups[function] = [_value_case(function, "eof", f"{function}(EOF)", "-1", "0")]
+        if function == "ft_isascii":
+            # glibc exposes isascii as a macro, not a callable, under POSIX.
+            # The man page is 1 for 0..127 and 0 otherwise, and that macro does not crash.
+            groups[function].extend(
+                _value_case(
+                    function,
+                    f"extra-{number if number >= 0 else 'm' + str(-number)}",
+                    f"{function}({number})",
+                    str(number),
+                    "0",
+                )
+                for number, _literal in _EXTRAS
+            )
+            continue
+        groups[function].extend(
+            _int_probe(function, number, literal, "ctype") for number, literal in _EXTRAS
+        )
+    for function in ("ft_toupper", "ft_tolower"):
+        groups[function] = [_value_case(function, "eof", f"{function}(EOF)", "-1", "-1")]
+        groups[function].extend(
+            _int_probe(function, number, literal, "soft") for number, literal in _EXTRAS
+        )
+    return groups
+
+
+def _libc(function: str, name: str, call: str, args: list[dict]) -> dict:
+    return {
+        "id": f"subject/{function}/{name}",
+        "function": function,
+        "kind": "compare_libc",
+        "suite": "subject",
+        "call": call,
+        "args": args,
+        "expected": None,
+        "part": "",
+    }
+
+
+def _breaker_cases() -> dict[str, list[dict]]:
+    """Inputs that break the usual wrong implementation. libc is the oracle."""
+    return {
+        "ft_strncmp": [
+            _libc(
+                "ft_strncmp",
+                "size-max",
+                'ft_strncmp("1234", "1235", (size_t)-1)',
+                [
+                    {"type": "str", "value": "1234"},
+                    {"type": "str", "value": "1235"},
+                    {"type": "int", "value": "-1"},
+                ],
+            )
+        ],
+        "ft_strrchr": [
+            _libc(
+                "ft_strrchr",
+                "high-bit",
+                'ft_strrchr("teste", \'e\' + 256)',
+                [
+                    {"type": "str", "value": "teste"},
+                    {"type": "int", "value": str(ord("e") + 256)},
+                ],
+            ),
+            _libc(
+                "ft_strrchr",
+                "nul",
+                'ft_strrchr("teste", \'\\0\')',
+                [
+                    {"type": "str", "value": "teste"},
+                    {"type": "int", "value": "0"},
+                ],
+            ),
+        ],
+        "ft_memchr": [
+            _libc(
+                "ft_memchr",
+                "zero-count",
+                'ft_memchr("bonjour", \'b\', 0)',
+                [
+                    {"type": "str", "value": "bonjour"},
+                    {"type": "int", "value": str(ord("b"))},
+                    {"type": "int", "value": "0"},
+                ],
+            ),
+            _libc(
+                "ft_memchr",
+                "past-nul",
+                'ft_memchr("a\\\\0b", \'b\', 3)',
+                [
+                    {"type": "str", "value": "a\x00b"},
+                    {"type": "int", "value": str(ord("b"))},
+                    {"type": "int", "value": "3"},
+                ],
+            ),
+            _libc(
+                "ft_memchr",
+                "high-bit",
+                'ft_memchr("ab", \'b\' + 256, 2)',
+                [
+                    {"type": "str", "value": "ab"},
+                    {"type": "int", "value": str(ord("b") + 256)},
+                    {"type": "int", "value": "2"},
+                ],
+            ),
+            _libc(
+                "ft_memchr",
+                "byte-255",
+                "ft_memchr(0xFF, -1, 1)",
+                [
+                    {"type": "str", "value": "\xff"},
+                    {"type": "int", "value": "-1"},
+                    {"type": "int", "value": "1"},
+                ],
+            ),
+        ],
+        "ft_strnstr": [
+            _libc(
+                "ft_strnstr",
+                "size-max",
+                'ft_strnstr("aaabc", "abc", (size_t)-1)',
+                [
+                    {"type": "str", "value": "aaabc"},
+                    {"type": "str", "value": "abc"},
+                    {"type": "int", "value": "-1"},
+                ],
+            )
+        ],
+        "ft_strlcpy": [
+            _case(
+                "ft_strlcpy",
+                "size-max",
+                'ft_strlcpy(dst, "hi", (size_t)-1) stops at the terminator',
+                {"type": "pair", "value": {"n": "2", "bytes": "hi\x00xxxxx"}},
+                """
+	unsigned char dst[8];
+	size_t n;
+	char *oh = NULL;
+	char *eh = NULL;
+	memset(dst, 'x', sizeof dst);
+	begin_cap();
+	n = ft_strlcpy((char *)dst, "hi", (size_t)-1);
+	end_cap(&oh, &eh);
+	emit_pair(id, n, dst, sizeof dst, oh, eh);
+""",
+            )
+        ],
+        "ft_strlcat": [
+            _case(
+                "ft_strlcat",
+                "no-terminator",
+                'ft_strlcat(dst, "z", 4) with no NUL inside the size',
+                {"type": "pair", "value": {"n": "5", "bytes": "aaaaaaaa"}},
+                """
+	unsigned char dst[8];
+	size_t n;
+	char *oh = NULL;
+	char *eh = NULL;
+	memset(dst, 'a', sizeof dst);
+	begin_cap();
+	n = ft_strlcat((char *)dst, "z", 4);
+	end_cap(&oh, &eh);
+	emit_pair(id, n, dst, sizeof dst, oh, eh);
+""",
+            )
+        ],
+    }

@@ -77,6 +77,7 @@ class Done:
     missing: list[str]
     error: str | None = None
     log_path: str | None = None
+    warned: int = 0
 
 
 def find_header(root: Path) -> Path | None:
@@ -173,7 +174,7 @@ def run_libft(root: Path, control: RunControl | None = None):
     if header is None or archive is None:
         yield _blank_done("libft.h or libft.a was not found after make.")
         return
-    yield Log("A skip is not a pass. Subject calls still run.")
+    yield Log("Running the calls that can break a libft.")
     try:
         text = header.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
@@ -218,8 +219,6 @@ def run_libft(root: Path, control: RunControl | None = None):
             action = classify(case, declared)
             if action.status == "run" and action.bound is not None:
                 live.append(action.bound)
-            else:
-                outcomes.append(outcome_from(case, "skip", action.reason))
         row = build_row(function, outcomes, present)
         if live and present:
             row.note = "running"
@@ -228,6 +227,7 @@ def run_libft(root: Path, control: RunControl | None = None):
     yield Plan(planned)
     passed = 0
     failed = 0
+    warned = 0
     skipped = 0
     logged: list[tuple[str, list[Outcome]]] = []
     with tempfile.TemporaryDirectory(prefix="cc-holes-") as temporary:
@@ -258,6 +258,7 @@ def run_libft(root: Path, control: RunControl | None = None):
             row = build_row(function, outcomes, present)
             passed += row.passed
             failed += row.failed
+            warned += row.warned
             skipped += row.skipped
             logged.append((function, outcomes))
             yield Update(row)
@@ -265,4 +266,4 @@ def run_libft(root: Path, control: RunControl | None = None):
     if log_error:
         yield Log(f"Could not write 42_holes.log: {log_error}")
     missing = [name for name in SUBJECT if name not in declared and name in grouped]
-    yield Done(passed, failed, skipped, other, missing, None, log_path)
+    yield Done(passed, failed, skipped, other, missing, None, log_path, warned)

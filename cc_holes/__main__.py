@@ -16,19 +16,17 @@ def cli(folder: str) -> int:
             row = event.row
             print(
                 f"{row.function:<16} pass {row.passed:<4} fail {row.failed:<4} "
-                f"skip {row.skipped:<4} {row.note}"
+                f"warn {row.warned:<4} {row.note}"
             )
         elif isinstance(event, Done):
             if event.error:
                 print(event.error)
                 return 2
             print(
-                f"\npass {event.passed}  fail {event.failed}  skip {event.skipped}"
+                f"\npass {event.passed}  fail {event.failed}  warn {event.warned}"
             )
             if event.missing:
                 print("missing from libft.h: " + ", ".join(event.missing))
-            if event.other:
-                print(f"old functions not in this libft: {event.other} tests")
             if event.log_path:
                 print(f"log: {event.log_path}")
             code = 1 if event.failed else 0
