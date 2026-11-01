@@ -40,4 +40,13 @@ if ! python3 -c 'import textual' >/dev/null 2>&1; then
     || die "Could not install textual. Run: python3 -m pip install --user 'textual>=8.2'"
 fi
 
-exec python3 "$root/holes.py" "$@"
+# curl | bash reads this script on stdin. Redirect on the exec line so
+# bash does not try to read the rest of the script from the terminal.
+launch() {
+  if [[ -t 0 ]]; then
+    exec python3 "$root/holes.py" "$@"
+  fi
+  exec python3 "$root/holes.py" "$@" </dev/tty \
+    || die "42_Holes needs a terminal."
+}
+launch "$@"
