@@ -2,7 +2,7 @@
 
 a TUI project to test your 42 project, made by student for students
 
-It grades a libft against the current subject (v19.2). Part 1 is compared with libc, including calls where libc crashes. A crash there is a warning when your function returns, and a failure when yours crashes and libc does not.
+It grades a libft against the current subject (v19.2), and an ft_printf against subject v12.1. Part 1 of libft is compared with libc, including calls where libc crashes. A crash there is a warning when your function returns, and a failure when yours crashes and libc does not.
 
 ## Run
 
@@ -39,7 +39,7 @@ Python 3 with pip, git, gcc, and make. `strlcpy`, `strlcat`, and `strnstr` are c
 | Fail | The call ran and differed, or your function crashed where libc did not. The process exits 1. |
 | Warn | libc crashed and your function returned, or a call the subject does not define crashed. A warning does not fail the run. |
 
-`ft_printf` and `get_next_line` are listed. Their runners are not built yet.
+`ft_printf` compares stdout and the return value with `printf`. Mandatory is `cspdiuxX%` with no flags. Bonus is the flags `-0.` and a minimum width, then `#`, `+`, and space. `make bonus` is run before the bonus calls. `get_next_line` is listed. Its runner is not built yet.
 
 After a graded run, `42_holes.log` in the project folder lists failures and warnings only.
 

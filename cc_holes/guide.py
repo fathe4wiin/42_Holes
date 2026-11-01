@@ -134,6 +134,16 @@ What the subject (v19.2) requires, and this tester checks
   and every ft_lst* function have subject calls with a real buffer.
   A function the subject names and libft.h does not declare is a Fail.
 
+ft_printf (subject v12.1)
+  Mandatory is the conversions c s p d i u x X and %%. No flags, no width.
+  Stdout and the return value are compared with printf, including %s of NULL
+  and %p of NULL. A NUL from %c is a real byte.
+  Bonus is tested too. One row is the flags - 0 . and a minimum width, including *.
+  The other row is the flags #, +, and space.
+  make builds the mandatory library. Bonus calls run after make bonus.
+  If that rule fails, those calls use the library from make.
+  42 grades bonus only when mandatory is perfect. This tester still reports it.
+
 What a call is
   The call is the line you would write, for example:
       ft_atoi("  123")
@@ -142,7 +152,7 @@ What a call is
 
 What each suite compares
   subject
-      The behavior written in en.subject.pdf.
+      The behavior written in libft_subject.pdf and the ft_printf subject (v12.1).
   fsoares
       Your function against libc, or against a stored string or the bytes written.
       strncmp and memcmp pass when the sign matches libc.
@@ -177,7 +187,8 @@ The cases come from the francinette catalog:
 libft is built with your Makefile, then each direct call is linked
 against libft.a. libc is the oracle when the catalog does not store one.
 
-ft_printf and get_next_line are listed. Their runners are not built yet.
+ft_printf is built the same way, against libftprintf.a, and compared with printf.
+get_next_line is listed. Its runner is not built yet.
 """
 
 

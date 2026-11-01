@@ -17,6 +17,7 @@ _RUNTIME = r"""
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -149,6 +150,15 @@ static void emit_void(const char *id, char *out_hex, char *err_hex)
 		out_hex ? out_hex : "", err_hex ? err_hex : "");
 	free(out_hex);
 	free(err_hex);
+	fflush(stdout);
+}
+
+static void emit_pf(const char *id, int got, int want, char *out_hex, char *libc_hex)
+{
+	printf("%s\tok\tpf\t%d:%d\t%s\t%s\n", id, got, want,
+		out_hex ? out_hex : "", libc_hex ? libc_hex : "");
+	free(out_hex);
+	free(libc_hex);
 	fflush(stdout);
 }
 
@@ -778,11 +788,101 @@ def _render_snippet(index: int, bound: Bound) -> str:
     return f"static void t_{index}(void)\n{{\n\tconst char *id = {ident};\n{body}\n}}\n"
 
 
+def _printf_expr(index: int, arg) -> str:
+    if arg.role == "int":
+        if arg.num == -2147483648:
+            return "(-2147483647 - 1)"
+        return str(arg.num)
+    if arg.role == "uint":
+        if arg.num == -2147483648:
+            return "(unsigned int)(int)(-2147483647 - 1)"
+        if arg.num < 0:
+            return f"(unsigned int)(int)({arg.num})"
+        return f"{arg.num}u"
+    if arg.role == "cstr":
+        return f"(char *)b{index}"
+    if arg.role == "snull":
+        return "(char *)0"
+    if arg.role == "pnull":
+        return "(void *)0"
+    if arg.role == "ptr":
+        if arg.num == -2147483648:
+            return "(void *)(intptr_t)(-2147483647 - 1)"
+        if arg.num < 0:
+            return f"(void *)(intptr_t)({arg.num})"
+        if arg.num > 4294967295:
+            return f"(void *)(uintptr_t){arg.num}ull"
+        return f"(void *)(uintptr_t){arg.num}u"
+    if arg.role == "local":
+        return "(void *)&hole_local"
+    raise RuntimeError(f"unhandled printf argument {arg.role}")
+
+
+def _render_printf(index: int, bound: Bound) -> str:
+    ident = _c_string(bound.case["id"])
+    lines = [f"static void t_{index}(void)", "{"]
+    exprs: list[str] = []
+    local = False
+    for arg_index, arg in enumerate(bound.args):
+        if arg.role == "fmt":
+            lines.append(
+                f"\tstatic const unsigned char fmt[] = {{{_byte_list(arg.buf or b'\x00')}}};"
+            )
+            continue
+        if arg.buf is not None:
+            lines.append(
+                f"\tstatic const unsigned char b{arg_index}[] = {{{_byte_list(arg.buf)}}};"
+            )
+        if arg.role == "local":
+            local = True
+        exprs.append(_printf_expr(arg_index, arg))
+    if local:
+        lines.append("\tint hole_local;")
+        lines.append("\thole_local = 42;")
+    joined = ", ".join(exprs)
+    extra = f", {joined}" if joined else ""
+    lines.extend(
+        [
+            "\tchar *oh = NULL;",
+            "\tchar *eh = NULL;",
+            "\tchar *lh = NULL;",
+            "\tchar *le = NULL;",
+            "\tint got;",
+            "\tint want;",
+            "\tbegin_cap();",
+            f"\tgot = ft_printf((const char *)fmt{extra});",
+            "\tend_cap(&oh, &eh);",
+            "\tbegin_cap();",
+            f"\twant = printf((const char *)fmt{extra});",
+            "\tend_cap(&lh, &le);",
+            '\tif (strcmp(eh ? eh : "", le ? le : "") != 0)',
+            "\t{",
+            '\t\tprintf("%s\\tok\\tbad\\tstderr differs\\t%s\\t%s\\n",',
+            f'\t\t\t{ident}, eh ? eh : "", le ? le : "");',
+            "\t\tfree(oh);",
+            "\t\tfree(eh);",
+            "\t\tfree(lh);",
+            "\t\tfree(le);",
+            "\t\tfflush(stdout);",
+            "\t\treturn;",
+            "\t}",
+            f"\temit_pf({ident}, got, want, oh, lh);",
+            "\tfree(eh);",
+            "\tfree(le);",
+            "}",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def _render_case(index: int, bound: Bound) -> str:
     if bound.snippet:
         return _render_snippet(index, bound)
     if bound.loop is not None:
         return _render_loop(index, bound)
+    if bound.spec.observe == "printf":
+        return _render_printf(index, bound)
     ident = _c_string(bound.case["id"])
     lines = [f"static void t_{index}(void)", "{"]
     exprs: list[str] = []
@@ -838,7 +938,7 @@ def _render_case(index: int, bound: Bound) -> str:
     return "\n".join(lines)
 
 
-def render_driver(bounds: list[Bound]) -> str:
+def render_driver(bounds: list[Bound], header: str = "libft.h") -> str:
     bodies = [_render_case(index, bound) for index, bound in enumerate(bounds)]
     names = ", ".join(f"t_{index}" for index in range(len(bounds))) or "0"
     ids = ", ".join(_c_string(bound.case["id"]) for bound in bounds)
@@ -853,7 +953,11 @@ def render_driver(bounds: list[Bound]) -> str:
             'static const char *const ids[] = {""};\n'
             "#define N 0\n"
         )
-    return _RUNTIME + "\n" + "\n".join(bodies) + "\n" + table + "\n" + _MAIN
+    include = f'#include "{header}"'
+    if header == "ft_printf.h":
+        include += "\n#undef printf"
+    runtime = _RUNTIME.replace('#include "libft.h"', include)
+    return runtime + "\n" + "\n".join(bodies) + "\n" + table + "\n" + _MAIN
 
 
 def compile_driver(
@@ -861,15 +965,25 @@ def compile_driver(
     binary: Path,
     include: Path,
     archive: Path,
+    includes: list[Path] | None = None,
+    archives: list[Path] | None = None,
 ) -> tuple[bool, str]:
+    incs: list[Path] = []
+    for path in [include, *(includes or [])]:
+        if path not in incs:
+            incs.append(path)
+    libs: list[Path] = []
+    for path in [archive, *(archives or [])]:
+        if path.is_file() and path not in libs:
+            libs.append(path)
     command = [
         "gcc",
         "-Wall",
         "-Wextra",
         "-Wno-unused-function",
-        f"-I{include}",
+        *[f"-I{path}" for path in incs],
         str(source),
-        str(archive),
+        *[str(path) for path in libs],
         "-o",
         str(binary),
         "-Wl,--allow-multiple-definition",

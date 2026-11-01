@@ -1,241 +1,140 @@
 # 42_Holes context
 
-Handoff for the next session. This is the state of the libft tester as of 31 Oct 2026.
+Handoff as of 1 Nov 2026. Repo: `git@github.com:fathe4wiin/42_Holes.git`, branch `main`.
 
-## What this project is
+## What this is
 
-A Python TUI that grades a student's 42 project against the community francinette catalog, corrected against the current subject.
+A Python TUI that grades a student's libft or ft_printf. Libft subject is `libft_subject.pdf`, v19.2. Lists are mandatory part 3, not a bonus. ft_printf subject is `cc_holes/prinf_subject.pdf`, v12.1 (the file name is missing the t).
 
-- Entry: `python3 holes.py` opens the TUI. `python3 holes.py /path/to/libft` runs libft on the command line (exit 1 if any fail, 2 on a build error).
-- Catalog: `francinette-tests.json`, schema `francinette-tests/1`. Load it with `json.load`. Do not scan it as text.
-- Parse contract: `francinette-tests.md`. Read it before changing what is skipped.
-- Subject: `en.subject.pdf`, Libft version 19.2. Lists are mandatory part 3, not a bonus.
-- Only libft runs. `ft_printf` (3547 tests) and `get_next_line` (94 tests) are listed and their Run button stays disabled. Any other project in the JSON is ignored.
-- Theme is dark red on black: background `#070000`, hero `#ff5555`, panels `#140606` / `#100202`, borders `#6e1414` / `#8d1f1f`.
-- Dependency: `textual>=8.2` (`requirements.txt`). The machine has Textual 8.2.8. There is no figlet. The logo is a hand-built 5-row block font in `cc_holes/guide.py`.
+`francinette-tests.json` (schema `francinette-tests/1`) and `vendor/francinette/` were the kickstart. The subject wins when they disagree. Add a call when it breaks typical wrong code. Do not aim to cover every input. Part 1 is the exception: it must match libc, including a crash.
 
-The tagline under the logo is exactly:
+libft and ft_printf run. `get_next_line` is listed and its Run button stays disabled.
+
+Tagline, exact, under the logo:
 
 `a TUI project to test your 42 project, made by student for students`
 
-Do not invent an author name.
+Do not invent an author name. The logo is a 5-row block font in `cc_holes/guide.py`. Theme is dark red on black. Dependency is `textual>=8.2`. Verify the TUI with `App.run_test`, not a browser.
 
-## How to run and what was last measured
+## Run
 
 ```sh
-python3 holes.py
-python3 holes.py /tmp/cc-holes-ref-libft
+curl -fsSL https://raw.githubusercontent.com/fathe4wiin/42_Holes/main/run.sh | bash
+curl -fsSL https://raw.githubusercontent.com/fathe4wiin/42_Holes/main/run.sh | bash -s -- ~/libft
 ```
 
-The reference library is not in this repo. It lives at `/tmp/cc-holes-ref-libft` (correct) and `/tmp/cc-holes-bad` (`ft_atoi` always returns 0). `/tmp` can disappear. Rebuild the reference before trusting a number.
+`run.sh` installs `textual` for the user if it is missing. A piped run clones into `~/.cache/42_holes` (or `$XDG_CACHE_HOME/42_holes`). From this checkout, `./run.sh` uses this folder.
 
-Last full run of the correct reference, after the buffer recovery:
+`curl | bash` leaves the script on stdin. The TUI redirect is on the `exec` line (`</dev/tty`). A redirect on an earlier line makes bash read the rest of the script from the terminal. Raw GitHub can serve the previous `run.sh` for about 5 minutes after a push.
 
-- 728 pass, 0 fail, 591 skip
-- 416 tests belong to old functions that this reference does not declare
-- `ft_memset` 11 calls, `ft_bzero` 5, `ft_memcpy` 5, `ft_memmove` 11, `ft_strlcpy` 12, `ft_strlcat` 28, `ft_memcmp` 18, `ft_calloc` 5, `ft_strmapi` 6, `ft_striteri` 5
-- A full libft run is about 6 seconds
+`python3 holes.py` opens the TUI. `python3 holes.py /path/to/libft` grades that folder. Exit 1 if any call failed, 2 on a build or setup error. A warning does not fail the run.
 
-Earlier checkpoints, so a regression is obvious:
+Needs Python 3 with pip, git, gcc, and make. `strlcpy`, `strlcat`, and `strnstr` retry the link with `-lbsd`.
 
-- First direct-call runner, before subject cases and loops: 562 pass, 0 fail, 730 skip
-- After subject cases and war-machine loops, before named buffers: 646 pass, 0 fail, 673 skip
-- Broken atoi, measured before those additions: 40 real `ft_atoi` fails (`yours 0, libc 123`)
+## Results
 
-The log is `<project folder>/42_holes.log`. It is plain text. Each call is `PASS`, `FAIL`, or `SKIP`, then yours against libc or the stored value. Skip reasons are expanded from `SKIP_WHY` in `cc_holes/guide.py`.
+Pass, Fail, Warn. The table columns are Function, Part, Pass, Fail, Warn, Note. The banner is `Pass N   Fail N   Warn N`.
+
+| Result | Meaning |
+| --- | --- |
+| Pass | Matched the subject, libc, or the stored value. Both crashing on the same undefined part 1 call is a pass. |
+| Fail | The call differed, or the function crashed where libc did not. A missing subject function is one Fail: `libft.h does not declare it`. |
+| Warn | libc crashed and the function returned, or a call the subject does not define crashed. A warning is not an error. |
+
+`42_holes.log` in the project folder lists FAIL and WARN only. A clean run still writes the header with `fail 0  warn 0`.
+
+Catalog rows that are only a name, a C++ assertion, a fuzzer, a sandbox, or a `rand()` buffer are dropped. They are not shown and not logged. `SKIP_WHY` in `guide.py` is unused. The guide subtitle in `app.py` still says "Skip"; the guide body does not.
+
+Last full run of `/tmp/cc-holes-ref-libft` (not in this repo, and `/tmp` can disappear): 846 pass, 1 fail, 28 warn, about 15 seconds. The fail is `ft_strnstr(NULL, "a", 0)`: libbsd returns, that copy reads the haystack first. `ft_strnstr(NULL, "a", 1)` both crash and passes. The warnings are out-of-range character calls and part 2 NULL crashes. `/tmp/cc-holes-bad` only breaks `ft_atoi`.
 
 ## Screens
 
-`HolesApp` mounts `HomeScreen`.
+`HomeScreen` is a centered card, not the full terminal. `#brand` is 60% (logo and tagline), `#menu-slot` is 40%.
 
-The home card is `#window` (76 columns, 27 rows, centered in `#stage`). It is not the whole terminal. Inside that card:
+Home keys, all `priority=True`: `a` available tests, `g` guide, `c` credits, `q` quit. Arrows move. Enter opens the row. The menu is a `ListView`. It needs `focus()` and an index or Enter does nothing.
 
-- `#brand` is `height: 60%` and holds the ASCII `42_Holes` plus the tagline
-- `#menu-slot` is `height: 40%` and holds the menu
+`Available tests` pushes `PickScreen`. Escape returns home. Enter opens `PathScreen`. The path is the folder with the Makefile. `get_next_line` opens it with Run disabled.
 
-Measured on a 100x36 terminal: the window content box is 25 rows, the brand is 15 (exactly 60%), the menu region is 10 (40%). `size.height` on the menu widget is smaller than its region because of padding. Trust the region.
+`RunScreen` keys: Escape back, `g` guide, `r` run again, `q` quit. Highlighting a row shows that function's fails, then its warnings.
 
-Menu keys, all with `priority=True` so they work no matter which row is highlighted:
+`Static.content` is the text. There is no `renderable`.
 
-- `a` Available tests
-- `g` Use guide
-- `c` Credits
-- `q` Quit
-- Up and down move. Left and right move too. Enter opens the highlighted row.
+## Subject rules
 
-`MenuList` is a `ListView`, not a stack of `Button`s. Buttons do not move on the arrow keys. A `ListView` does. Screen bindings need `priority=True` or the focused list eats the letter.
+From `libft_subject.pdf` v19.2.
 
-`Available tests` pushes `PickScreen`. Escape returns home. Enter on a project opens `PathScreen`. The path is the folder that contains the Makefile and the sources, not a path to one executable. `ft_printf` and `get_next_line` open the path screen with Run disabled.
-
-`RunScreen` columns: Function, Part, Pass, Fail, Skip, Note. Keys: Escape back, `g` guide, `r` rerun, `q` quit. Highlighting a row rewrites the detail log with that function's fails, or skip samples. The banner after a run shows pass, fail, skip, missing subject functions, and the old-function count.
-
-`Use guide` is the student-facing explanation of Skip, of what a call is, and of each suite. Keep it in agreement with this file and with `SKIP_WHY`.
-
-Textual pitfalls already hit:
-
-- `ListView` does nothing on Enter until it has `focus()` and `index` set. `PickScreen._ready` sets both.
-- `Static.content` is the text. There is no `renderable` and `_content` is None.
-- `run_worker(thread=True)` plus `call_from_thread` works under `App.run_test`.
-- Verify the TUI with `App.run_test`. This is not a browser app.
-
-## File map
-
-| Path | Role |
-| --- | --- |
-| `holes.py` | Shebang launcher. Calls `cc_holes.__main__.main`. |
-| `cc_holes/catalog.py` | `json.load`, schema check, project order libft / ft_printf / get_next_line then the rest. |
-| `cc_holes/model.py` | Subject list, specs, bind, classify, oracles, grade, harness protocol parser. |
-| `cc_holes/harness.py` | C driver. Forks one child per call, captures stdout and stderr around the call, prints a 6-field line. |
-| `cc_holes/buffers.py` | Turns named `mem` / `dest` / `src` into the bytes from the original C. |
-| `cc_holes/subject_cases.py` | Extra calls taken from `en.subject.pdf` when the catalog has no literal input. |
-| `cc_holes/runner.py` | `make`, find `libft.h` and `libft.a`, plan rows, compile, run, write the log. |
-| `cc_holes/guide.py` | Logo, tagline, guide text, credits, `write_log`. |
-| `cc_holes/app.py` | Textual screens and CSS. |
-| `vendor/francinette/fsoares/` | The C that defines `reset`, `MEM_SIZE`, and the fsoares tests. |
-| `vendor/francinette/war-machine/` | The `main.c` files whose fills were copied into `buffers.py`. |
-
-`vendor/francinette/fsoares/utils/utils.c` was not in the local `../francinette-image` checkout. The image's Dockerfile clones `xicodomingues/francinette`, but the copy under `francinette-image/francinette/tests/libft/fsoares/` has the `test_*.c` files and not `my_utils.c` or `utils/`. Those two were fetched from that GitHub repo and then copied into `vendor/`. `my_utils.c` is only the alarm and the test signature. The fill is `reset()` in `utils/utils.c`.
+- Part 1 is the libc functions through `strdup` (23). Part 2 is `substr` through `putnbr_fd` (11). Part 3 is the nine `ft_lst*` functions.
+- `isalpha`, `isdigit`, `isalnum`, `isascii`, `isprint` must return exactly 0 or 1. glibc `isalpha` returns 1024 for a letter. That fails. Other bools stay zero versus non-zero.
+- `isascii` is graded as a value. Do not call libc for it. `_POSIX_C_SOURCE 200809L` hides the function, and glibc's macro does not crash.
+- `toupper` / `tolower` of `EOF` is -1. Other out-of-range character mismatches are a warning (`soft`), not a fail.
+- `calloc(0, *)` must return a unique pointer `free` accepts. `calloc((size_t)-1, (size_t)-1)` is compared by nullness and the pointer is not freed.
+- Part 1 crash probes fork, silence stdio, and `alarm(1)`. libc crashed and the student returned: Warn. Student crashed and libc did not: Fail. Both crashed: Pass. Neither crashed on a pure crash probe: Pass.
+- Part 2 and list calls the subject does not define: a crash is Warn, a return is Pass.
+- `strncmp` and `memcmp` use the sign, not the magnitude.
+- A negative count in the catalog is a `size_t`, not zero. String oracles stop at NUL. `_pad_mem` only pads a `mem` role when `0 <= n <= 2_000_000`.
+- `ft_strncmp("1234", "1235", (size_t)-1)`, `ft_strnstr("aaabc", "abc", (size_t)-1)`, and the `strlcpy` / `strlcat` size `(size_t)-1` cases are real breakers.
+- Leaks are not graded. There is no malloc hook. `ft_lstdelone` checks that `del` was called, not that the node was freed.
 
 ## Pipeline
 
-1. `make -C <folder>` with a 180s timeout. If make is non-zero but `libft.a` exists, continue.
+1. `make -C <folder>` with a 180s timeout. If make fails and `libft.a` exists, continue.
 2. Find `libft.h` in the root, `includes/`, `include/`, `inc/`, or `headers/`. Find `libft.a` in the root or one level down.
-3. Parse `ft_*` names out of the header with a regex, after stripping comments.
-4. Group catalog tests by function. Append `subject_cases()` only when the function is declared.
-5. `classify` each case into run or skip. `concretize` runs first and may replace a named buffer with real bytes or a C snippet.
-6. One driver per function: `gcc -Wall -Wextra -Wno-unused-function -I<include> driver.c libft.a -Wl,--allow-multiple-definition`. On link failure, retry with `-lbsd` (strlcpy and strlcat are not in glibc).
-7. Each case is a child with `alarm(3)`. The parent polls up to about 5 seconds and reads only when `poll` is ready. A blocking read after a timeout was a real bug. Do not put it back.
-8. Protocol line, six tab fields: id, status, kind, payload, stdout hex, stderr hex, then a `DONE` line. Kinds: `int`, `size`, `null`, `bytes`, `mem`, `void`, `bad`, `lines`, `pair`.
-9. `grade` compares the observation to libc or to the stored expected value.
-10. Write `42_holes.log` in the project folder, including on cancel if anything was already graded.
+3. Parse `ft_*` from the header after stripping comments.
+4. Group catalog tests by function. Append `subject_cases()` when the function is declared.
+5. `classify` decides run or drop. `concretize` may replace a named buffer with bytes or a C snippet.
+6. One driver per function: `gcc -Wall -Wextra -Wno-unused-function`. On link failure, retry with `-lbsd`.
+7. One child per call, `alarm(3)`. The parent reads only when `poll` is ready. A blocking read after a timeout hung the suite.
+8. Six tab fields, then `DONE`. Kinds include `int`, `size`, `null`, `bytes`, `mem`, `void`, `bad`, `lines`, `pair`, `ub`, and `guard`.
+9. `grade` compares the observation to libc or to the stored value.
+10. Write `42_holes.log`, including on cancel if anything was already graded.
 
-A missing subject function is one Fail: `libft.h does not declare it`. Its catalog rows stay Skip with reason `not in libft.h`. The row note is `required, not in libft.h`. The banner also lists missing names.
+The `call` string is display text. Nothing evals it. Arguments come from `args`. `INT_MAX` is the string `2147483647` when the parameter is a C string. `(e + "1").c_str()` is tab, newline, vertical tab, form feed, carriage return, then the quoted tail.
 
-Old functions that are not in `SUBJECT` and not in the header are counted as "old functions", not one table row each.
+Named `mem` / `dest` / `src` bytes come from `cc_holes/buffers.py`, which follows `vendor/francinette/`. fsoares `reset` fills `0x11` for `MEM_SIZE` 256. `rand()` rows have no saved bytes. Do not invent a seed.
 
-## Subject rules that changed the grader
+## Files
 
-From `en.subject.pdf` v19.2. These override "match glibc" where they disagree.
-
-- Part 1 is the libc functions through `strdup` (23 functions). Part 2 is `substr` through `putnbr_fd` (11). Part 3 is the nine `ft_lst*` functions. `PART_OF` says `part 3`, not `bonus`.
-- `isalpha`, `isdigit`, `isalnum`, `isascii`, `isprint` must return exactly 1 or exactly 0. glibc `isalpha` returns 1024 for a letter. A bool check used to treat any non-zero as true. That was wrong for these five. `_grade_ctype` requires the exact value. A return of 1024 fails with `subject: exactly 1 or 0`.
-- Other bool checks (not these five) stay zero versus non-zero, because the subject only states the 1-or-0 rule for the character classes.
-- `calloc`: if `nmemb` or `size` is 0, return a unique pointer that `free` accepts. On this machine glibc already does that for `(0,0)`, `(0,10)`, and `(10,0)`. The second `calloc(1,0)` can reuse an address after `free`, which is still a unique live pointer. A subject case calls `ft_calloc(0, 0)` because some catalog rows for that call have empty `args`.
-- Functions must not crash, except on undefined behavior. A crash on a defined call is a Fail (`segfault`, `abort`, `timeout`, `bus error`, ...).
-- Memory leaks are not tolerated by the subject. This tester does not hook `malloc`. `ft_lstdelone` checks that `del` was called. It does not prove the node itself was freed. Say that if someone asks for a leak grade.
-- NULL arguments are skipped (`null argument`), except where a subject case defines them (`ft_lstnew(NULL)`, `ft_lstsize(NULL)`, `ft_lstlast(NULL)`). `strlen(NULL)` is undefined. Do not start failing those without a subject sentence that defines them.
-- `ft_substr` start and length of `-1` are the unsigned conversions `(unsigned int)-1` and `(size_t)-1`, not a huge allocation. `_pad_mem` must not treat every negative size as "too large". It only pads when a `mem` role exists and `0 <= n <= 2_000_000`.
-
-## What a call is
-
-The `call` string is display text from the catalog, for example `ft_atoi("  123")`. Nothing evals that string. Arguments come from the `args` array as bytes, chars, and integers. The log and the detail pane show the call so a student can read it.
-
-Known expressions that are real inputs:
-
-- `INT_MAX` / `INT_MIN` as an int, or as the decimal string when the parameter is a C string. `ft_atoi(INT_MAX)` is the string `2147483647`.
-- `EOF` as a C string is one byte `0xFF` then NUL. `(char)EOF` is `0xFF`.
-- `'a' - 1` and `'z' + 1` are parsed. So is `'e' + 256`.
-- Tripouille `(e + "1").c_str()` builds the five-byte string tab, newline, vertical tab, form feed, carriage return, then the quoted tail.
-
-`ft_strncmp` and `ft_memcmp` against libc use the sign, not the magnitude. fsoares `same_sign`. A student may return -42 where libc returns -1.
-
-fsoares `ft_putnbr_fd` stored stdout includes a newline because the original test then calls `ft_putendl_fd("")`. Strip one trailing newline only for that suite and function.
-
-war-machine loops (`ft_isalpha(i) for i in 0..47`, and the same shape for the other `is*`, `toupper`, `tolower`, `putchar_fd`) are one catalog row for a whole inclusive range. ` exclusive` would exclude the end. The driver runs the range. For the five `is*` functions each return must be 0 or 1 and the captured bytes are the ASCII digits. `toupper` / `tolower` write the low 8 bits. `putchar_fd` writes to the fd in the case `body` (1 or 2). The stored `stream` matches that fd.
-
-## Suites
-
-- `subject`: calls this tester added from the PDF. Real buffers, list nodes, `strmapi` / `striteri` callbacks.
-- `fsoares`: libc, or a stored string / split / written bytes. Buffer names are resolved in `buffers.py`.
-- `Tripouille`: a direct call with an expected bool, number, byte, string, or NULL. List checks are often C++ (`l->content == (void*)1`) with empty args. Those stay skipped. The subject suite covers the list contract.
-- `war-machine`: the bytes the old `main.c` printed. Comparison results are printed as -1, 0, or 1. A NULL pointer is the word `NULL`. If our reconstruction of that printer does not match the stored bytes, the case used to skip as `print wrapper is custom`. The named-buffer rows now replay the printer.
-- `alelievr`: sandbox and speed. Empty args, the C is in `body`. Not run.
-- `alelievr-hardcore`: one fuzzer per old function. Not run.
-
-## Named buffers
-
-The JSON stores the name `mem` or `dest` and `expected: null`. It does not store the bytes. `body` and `notes` are null. `source` is a path such as `francinette/tests/libft/fsoares/test_memset.c`.
-
-Recovered fills:
-
-- fsoares `reset(m1, m2, size)` is `memset(..., 0x11, size)`. `MEM_SIZE` is `0x100` (256).
-- `reset_with` is that fill, then `strcpy` of the original string. `ft_strlcat` in the catalog lists the original string as an argument, but the C function only receives dest, src, and n. The original string is the initial contents. The compare window is `(n / 16 + 1) * 16` bytes, matching `same_mem` in `test_strlcat.c`. `strlcpy` compares the whole 256.
-- fsoares `ft_memset(ptr, 143462, 4)` is an `int[256]` filled with `0x11`, the call starts one int in, and the compare is 16 bytes from the start of the array. The return must be that interior pointer.
-- fsoares `ft_memmove` overlaps inside one buffer of `MEM_SIZE + 10`. The value `"123456"` is `strcpy`'d onto the source side after both sides are reset.
-- fsoares `ft_memcpy(dest, src, 0)` does not depend on `rand_str`, because the count is 0. Both sides start as `0x11`. Any other memcpy count in that file is random and is not in the catalog as a single call.
-- war-machine `ft_memset`: 15 bytes of `j`, then the call, and it prints 15 bytes. A wrong return pointer writes `mem's adress was not returned\n` first (the typo is in the original).
-- war-machine `ft_bzero`: 5 bytes of `e`.
-- war-machine `ft_memcpy`: 30 bytes of `j`.
-- war-machine `ft_memmove`: `src` is `"lorem ipsum dolor sit amet"`, `dest` is `src + 1`, and 22 bytes are printed from `dest`. Cases 4 and 5 move the other way. The return check uses `dest's adress was not returned\n`.
-- war-machine `ft_strlcpy` / `ft_strlcat`: 15-byte buffer, zeros, then 6 `r`s. The printer writes the size in decimal, a newline, then 15 bytes. Per-index mutations (`dest[11] = 'a'`, all `r`s, and so on) follow `ft_strlcat/main.c`.
-- fsoares `memcmp` / `strncmp` / `strnstr` cases `s1` and `s2` are the arrays in `test_memcmp.c`, `test_strncmp.c`, and `test_strnstr.c`. The interesting ones are `"abc\xfdxx"` and the same buffers with index 3 set to NUL, so a function that does not stop at NUL reads `e` versus `x`. `empty` for `strnstr` is a 10-byte stack buffer with `[0] = 0` and `[1] = 'a'`. The original left the tail uninitialized. This tester zeros that tail. A correct `strnstr` never reads it. The length is `4294967295`.
-- `ft_strmapi` / `ft_striteri` callbacks from fsoares: `add` is `(char)(i + c)`, `to_char_zero` writes `'0'`. The third catalog argument is the description string and is not passed to the function. war-machine `&mapi` / `&iter` swap case. The war-machine printer also checks that `strmapi` allocated a new string and that byte 11 is NUL.
-
-`rand()` rows stay skipped. `utils.c` calls `srand((unsigned int)time(NULL))`. Those bytes were never saved. Do not invent a seed.
-
-`sizeof(long)` is not a buffer. It is `ctypes.sizeof(ctypes.c_long)` (8 on this LP64 machine).
-
-## What Skip still means
-
-Skip is not a pass. The subject does not accept a wrong result. A skipped row has no input this process can run.
-
-| Reason | Why it is still skipped |
+| Path | Role |
 | --- | --- |
-| `not a direct input` | Fuzzer, speed, sandbox, generated loop, or a crash/guard helper with empty args. Crash rows are the inputs where libc itself crashes. That is undefined. The subject allows a crash only then. |
-| `argument is a harness name` | The name is not one of the fills above. Often `rand()` or an old-function buffer. |
-| `check is not a direct call` | Tripouille stored a C or C++ assertion, usually with empty args. |
-| `not in libft.h` | The header does not declare it. A subject function is also one Fail. |
-| `print wrapper is custom` | war-machine printed through a wrapper this tester did not rebuild. |
-| `inputs are not separated` | The call was stored as one string and `args` is empty or the wrong length. |
-| `no runner for this function yet` | An older function that is not in v19.2, such as `ft_putchar` or `ft_isblank`. |
-| `null argument` | The call passes NULL and the subject does not define that case. |
-| `fd is not 1 or 2` | The write goes somewhere other than stdout or stderr. |
-| `count is too large to stage` | The size does not fit in a buffer this tester builds. |
-| `no libc oracle` | Nothing stored and no libc twin for that function. |
-| `oracle type is not handled` | The stored expected kind is not one `grade` compares. |
+| `holes.py` | Launcher. Calls `cc_holes.__main__.main`. |
+| `run.sh` | Curl and local launcher. |
+| `cc_holes/catalog.py` | `json.load` the catalog. Order is libft, ft_printf, get_next_line, then the rest. |
+| `cc_holes/model.py` | Subject list, classify, oracles, `grade`. |
+| `cc_holes/harness.py` | C driver, crash probes, protocol. |
+| `cc_holes/buffers.py` | Named buffers from the vendor C. |
+| `cc_holes/subject_cases.py` | Subject snippets plus edge and breaker calls. |
+| `cc_holes/printf_cases.py` | ft_printf subject breakers and the catalog slice. v12.1 decides mandatory vs bonus. |
+| `cc_holes/runner.py` | make, plan, compile, run, log. Dropped cases are not recorded. |
+| `cc_holes/guide.py` | Logo, tagline, guide, credits, `write_log`. |
+| `cc_holes/app.py` | Textual screens and CSS. |
+| `vendor/francinette/` | fsoares and war-machine sources for the buffer fills. |
+| `francinette-tests.md` | Original catalog parse notes. The runner no longer surfaces skips. |
 
-The guard helpers (`part2_guard_substr` and the rest) and `libc_crash_*` live in files that are not fully in this repo (`ub_match.c` is, the crash bodies are behind macros). They have empty `args`. Leaving them skipped matches the parse contract. Do not fake their inputs.
+## Easy to break
 
-## Harness details that are easy to break
+- Capture stdout and stderr around the call, then restore the fds before the protocol `printf`.
+- NULs are a byte array plus a trailing NUL. Char arguments are the byte 0..255.
+- `emit_pair` is the strlcpy or strlcat return plus the buffer window.
+- The driver is GNU C, not `-std=c99`. The subject forbids `restrict` in the student's prototypes. That constraint is theirs.
+- New unused statics in the driver fail `-Werror` on unrelated functions unless marked unused. The compile line already passes `-Wno-unused-function`.
+- Escape `\n` inside generated C strings. war-machine's diagnostic keeps the typo `adress`.
+- `concretize` must ignore a case with no args. An empty crash row shares the name `ft_memset`.
+- A pipe into `awk` hides `holes.py`'s exit code.
 
-- Capture stdout and stderr with pipes around the call, then `dup2` back before the protocol `printf`. Otherwise the protocol bytes mix with the function's output.
-- NULs are staged as a byte array plus a trailing NUL. Char arguments are the byte 0..255, not a sign-extended `char`.
-- `emit_raw` writes a fixed length, so interior NULs survive. `emit_text` stops at the first NUL and is for C strings.
-- `emit_pair` is `size:hex`. It is the strlcpy and strlcat return plus the buffer window.
-- Children are a new session. On Python timeout the runner kills the process group.
-- Prefer a completed result line over a later crash in `free`.
-- The driver includes `libft.h` and is compiled as GNU C, not `-std=c99`. The subject forbids the student from putting `restrict` in their prototypes and from compiling their own code as C99. That constraint is on them, not on this driver.
-- Large stack arrays (the 1024-byte `int[256]` memset) are fine.
-- `subject_frees` and the subject callbacks are in every driver. The variable is marked unused. The compile line already passes `-Wno-unused-function`. A new unused static variable without that attribute fails `-Werror` on unrelated functions such as `ft_atoi`.
+## ft_printf
 
-## Reference library
+Subject v12.1. Mandatory is bare conversions `cspdiuxX%`. Bonus is flags `-0.` plus a minimum field width (a number or `*`), and flags `#`, `+`, and space. The catalog still marks some of those flags as mandatory. The subject wins.
 
-`/tmp/cc-holes-ref-libft` was extended so the new calls link. The header already declared the full subject. The C file originally implemented the string and stdio wrappers and not `memset`, `bzero`, `memcpy`, `memmove`, `strlcpy`, `strlcat`, `strmapi`, `striteri`, or the list functions. Those implementations were appended to `/tmp/cc-holes-ref-libft/ref.c`. They are a test double, not part of this repo. `strlcpy` and `strlcat` follow the OpenBSD rule: the return is the length they tried to create, and if no NUL is found inside `size` then `strlcat` returns `size + strlen(src)` and does not write.
+Stdout and the return value are compared with `printf` in one C driver. `%s` of NULL and `%p` of NULL follow this machine's libc. A `%c` of 0 must write a NUL byte. Leaks are not graded.
 
-`/tmp/cc-holes-bad` only breaks `ft_atoi`. It will not catch a bad `memset`.
+Rows are per conversion, plus `text`, `mix`, `ft_printf -0.`, and `ft_printf #+`. Not every catalog row runs. Subject breakers always run. Then up to 24 formats per row, plus a few edge values (0, -1, empty, NULL, INT_MIN, UINT_MAX). Length modifiers, positional `%1$`, and conversions outside `cspdiuxX%` are dropped.
 
-## Problems already hit
+`make`, then the mandatory rows. Then `make bonus`. If that fails or deletes `libftprintf.a`, bonus rows link the mandatory archive (a copy taken before `make bonus`). `ft_printf.h` is searched at the root and in `includes/`, `include/`, `inc/`, `headers/`, `src/`. `libft/libft.a` is linked when it exists. A library that is not at the repository root is a warning, and the run continues.
 
-- Textual was missing. Installed with `pip3 install --user textual`, which upgraded rich 14 to 15.
-- Exa search wanted auth. GitHub code search returned 401. war-machine `main.c` URLs that were guessed 404'd. The files are in `../francinette-image` and now under `vendor/francinette/war-machine/`.
-- The first TUI Enter did not open the path screen because the list was not focused and had no index.
-- `Static.renderable` does not exist.
-- The bad reference `return (0);` failed `make` with `-Werror=unused-parameter`. The fix there was `(void)str;`.
-- A pipe into `awk` hid the tester's exit code. A make failure looked like a later success.
-- The C parent did a blocking `read` after `poll` timed out and the suite hung. Read only when `poll` returns ready.
-- `_pad_mem` treated `ft_substr(..., -1, -1)` as an enormous allocation. Only pad a `mem` buffer.
-- `francinette-image` does not contain `utils.c`. Looking only at `test_memset.c` shows the name `mem` and not the fill. The fill is `0x11` in `reset()`.
-- Building a C string with a real newline inside the generated quotes splits the literal. Escape `\n` in generated strings. Lengths that were hand-counted: `mem's adress was not returned\n` is 30, `dest's adress was not returned\n` is 31, the two `strmapi` diagnostics are 30. The apostrophe typo `adress` is in the original war-machine source. Keep it, or the stdout will not match.
-- `ft_strlcpy` source arrays must include the terminating NUL. `memcpy` with an explicit count must not, or the count reads one byte too far.
-- An empty-args crash row shares the function name `ft_memset`. `concretize` must ignore cases with no args or it indexes off the end.
-- Passing a 256-byte expected buffer through the log is fine. `_show` truncates the displayed form at 48 characters. The comparison itself is exact.
+42 grades bonus only when mandatory is perfect. This tester still reports bonus fails.
 
-## What is still open
+## Still open
 
-- `ft_printf` and `get_next_line` have no runners. Do not start them until their tests are in scope. `get_next_line` has its own `lines` rules in `francinette-tests.md`, including `BUFFER_SIZE` and multi-fd groups.
-- Sandbox, speed, fuzzer, generated, crash, and guard rows are still skipped. The subject cares about leaks and about crashes on defined inputs. The catalog rows for those do not contain the input.
-- Tripouille list assertions are still skipped. The subject suite covers the basic contract, not every C++ check in that suite.
-- `rand()` memory tests (`ft_memchr`, the memcpy repetition loop, `ft_strlen` random strings) have no saved bytes.
-- There is no malloc interceptor, so a leak can still pass.
-- The reference library is in `/tmp`. A future session should recreate it or vendor a small one if the numbers need to be reproduced.
-- No git commit has been made for this work unless the user asks.
+- `get_next_line` has no runner.
+- No malloc interceptor, so a leak can pass.
+- The reference libft is only in `/tmp`. Recreate it before trusting the 846 / 1 / 28 numbers.

@@ -146,6 +146,7 @@ SPECS: dict[str, Spec] = {
     "ft_putstr_fd": _spec("ft_putstr_fd", ("cstr", "fd"), "void", "stream", optional_fd=True),
     "ft_putendl_fd": _spec("ft_putendl_fd", ("cstr", "fd"), "void", "stream", optional_fd=True),
     "ft_putnbr_fd": _spec("ft_putnbr_fd", ("int", "fd"), "void", "stream", optional_fd=True),
+    "ft_printf": _spec("ft_printf", (), "printf", "stream", "printf"),
 }
 
 
@@ -757,6 +758,8 @@ def grade(case: dict, spec: Spec, student: Obs, bound: Bound | None = None) -> t
     if student.kind == "bad":
         text = student.data.decode("ascii", "replace") or "bad result"
         return "fail", text
+    if spec.libc == "printf":
+        return _grade_printf(student)
     kind = case["kind"]
     if kind == "stdout" and bound is not None and (bound.loop is not None or bound.snippet):
         return _grade_stream(case, student)
@@ -876,6 +879,23 @@ def _grade_guard(student: Obs) -> tuple[str, str]:
             "This is a warning, not an error.",
         )
     return "pass", "returned without crashing"
+
+
+def _grade_printf(student: Obs) -> tuple[str, str]:
+    """Stdout and the return value, both compared with libc printf."""
+    if student.kind != "pf":
+        return "fail", "no result"
+    try:
+        libc_ret = int(student.data.decode("ascii"))
+    except ValueError:
+        return "fail", "could not read the libc result"
+    shown = (
+        f"yours {student.intval} {_show(student.out)}, "
+        f"libc {libc_ret} {_show(student.err)}"
+    )
+    if student.intval == libc_ret and student.out == student.err:
+        return "pass", shown
+    return "fail", shown
 
 
 def _grade_stream(case: dict, student: Obs) -> tuple[str, str]:
@@ -1025,6 +1045,16 @@ def parse_result_line(line: str) -> tuple[str, Obs] | None:
         return ident, Obs("ub", data=payload.encode("ascii", "replace"), out=out, err=err)
     if kind == "guard":
         return ident, Obs("guard", intval=int(payload or "0"), out=out, err=err)
+    if kind == "pf":
+        left, sep, right = payload.partition(":")
+        if not sep:
+            return ident, Obs("bad", data=b"could not read the libc result", out=out, err=err)
+        try:
+            got = int(left)
+            int(right)
+        except ValueError:
+            return ident, Obs("bad", data=b"could not read the libc result", out=out, err=err)
+        return ident, Obs("pf", intval=got, data=right.encode("ascii"), out=out, err=err)
     if kind == "lines":
         count_text, _, rest = payload.partition(":")
         count = int(count_text or "0")
@@ -1072,7 +1102,13 @@ class Row:
     warns: list[str] = field(default_factory=list)
 
 
-def build_row(function: str, outcomes: list[Outcome], declared: bool) -> Row:
+def build_row(
+    function: str,
+    outcomes: list[Outcome],
+    declared: bool,
+    part: str | None = None,
+    missing: str | None = None,
+) -> Row:
     passed = sum(item.status == "pass" for item in outcomes)
     failed = sum(item.status == "fail" for item in outcomes)
     warned = sum(item.status == "warn" for item in outcomes)
@@ -1094,7 +1130,7 @@ def build_row(function: str, outcomes: list[Outcome], declared: bool) -> Row:
     ][:4]
     note = ""
     if not declared:
-        note = "required, not in libft.h"
+        note = missing or "required, not in libft.h"
     elif warned and not failed:
         note = "warning"
     elif failed == 0 and passed == 0 and skipped:
@@ -1102,7 +1138,7 @@ def build_row(function: str, outcomes: list[Outcome], declared: bool) -> Row:
         note = reasons.most_common(1)[0][0]
     return Row(
         function=function,
-        part=PART_OF.get(function, "extra"),
+        part=part if part is not None else PART_OF.get(function, "extra"),
         passed=passed,
         failed=failed,
         skipped=skipped,

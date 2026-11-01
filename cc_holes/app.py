@@ -11,7 +11,7 @@ from textual.widgets import Button, DataTable, Footer, Input, ListItem, ListView
 
 from cc_holes.catalog import CatalogError, load_catalog, project_names
 from cc_holes.guide import CREDITS, GUIDE, LOGO, TAGLINE
-from cc_holes.runner import Done, Log, Plan, RunControl, Update, run_libft
+from cc_holes.runner import Done, Log, Plan, RunControl, Update, run_libft, run_printf
 
 CSS = """
 Screen {
@@ -322,7 +322,7 @@ class PickScreen(Screen):
         view = self.query_one("#projects", ListView)
         for name in project_names(catalog):
             total = counts.get(name, 0)
-            state = "ready" if name == "libft" else "runner not built yet"
+            state = "ready" if name in {"libft", "ft_printf"} else "runner not built yet"
             view.append(ProjectItem(name, f"{total} tests · {state}"))
         self.query_one("#status", Static).update("Pick a project. Enter opens it.")
         if view.children:
@@ -349,7 +349,7 @@ class PathScreen(Screen):
         self.project = project
 
     def compose(self) -> ComposeResult:
-        ready = self.project == "libft"
+        ready = self.project in {"libft", "ft_printf"}
         hint = "Folder that contains the Makefile and the sources."
         if not ready:
             hint = "This project is in the catalog. The runner is not built yet."
@@ -357,7 +357,7 @@ class PathScreen(Screen):
         yield Static(hint, classes="sub")
         yield Input(
             value=self.app.paths.get(self.project, ""),
-            placeholder="/home/you/libft",
+            placeholder="/home/you/ft_printf" if self.project == "ft_printf" else "/home/you/libft",
             id="path",
         )
         yield Static("", id="look", classes="sub")
@@ -376,7 +376,7 @@ class PathScreen(Screen):
             self._look(event.value)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        if self.project == "libft":
+        if self.project in {"libft", "ft_printf"}:
             self._open(event.value)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -449,8 +449,14 @@ class RunScreen(Screen):
         self.run_worker(self._job, thread=True, exclusive=True)
 
     def _job(self) -> None:
+        if self.project not in {"libft", "ft_printf"}:
+            self.app.call_from_thread(
+                self._apply, Done(0, 0, 0, 0, [], "This runner is not built yet.")
+            )
+            return
+        runner = run_printf if self.project == "ft_printf" else run_libft
         try:
-            for event in run_libft(Path(self.folder), self._control):
+            for event in runner(Path(self.folder), self._control):
                 self.app.call_from_thread(self._apply, event)
         except Exception as exc:
             self.app.call_from_thread(self._apply, Done(0, 0, 0, 0, [], str(exc)))
