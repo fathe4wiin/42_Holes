@@ -9,8 +9,9 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, DataTable, Footer, Input, ListItem, ListView, RichLog, Static
 
-from cc_holes.catalog import CatalogError, load_catalog, project_names
+from cc_holes.catalog import CatalogError, load_catalog
 from cc_holes.guide import CREDITS, GUIDE, LOGO, TAGLINE
+from cc_holes.py_run import PY_MODULES
 from cc_holes.runner import Done, Log, Plan, RunControl, Update, run_project
 
 CSS = """
@@ -173,7 +174,9 @@ def normalize(text: str) -> Path:
     return path
 
 
-_READY = {"libft", "ft_printf", "get_next_line", "push_swap"}
+_CIRCLE_00 = ("libft",)
+_CIRCLE_01 = ("get_next_line", "ft_printf", "push_swap")
+_READY = set(_CIRCLE_00) | set(_CIRCLE_01) | {item.name for item in PY_MODULES}
 _PLACEHOLDER = {
     "libft": "/home/you/libft",
     "ft_printf": "/home/you/ft_printf",
@@ -186,6 +189,9 @@ _SUBJECT_LABEL = {
     "get_next_line": "subject v14.3",
     "push_swap": "subject v1.2",
 }
+for _module in PY_MODULES:
+    _PLACEHOLDER[_module.name] = f"/home/you/{_module.name}"
+    _SUBJECT_LABEL[_module.name] = f"{_module.title} · subject v{_module.version}"
 
 
 def path_problem(path: Path, project: str | None = None) -> str:
@@ -199,6 +205,8 @@ def path_problem(path: Path, project: str | None = None) -> str:
         if (path / "get_next_line.c").is_file() and (path / "get_next_line.h").is_file():
             return ""
         return "get_next_line.c and get_next_line.h were not found in that folder."
+    if project in {item.name for item in PY_MODULES}:
+        return ""
     names = ("Makefile", "makefile", "GNUmakefile")
     if not any((path / name).is_file() for name in names):
         return "No Makefile in that folder."
@@ -258,7 +266,7 @@ class HomeScreen(Screen):
             getattr(self, f"action_{item.menu_action}")()
 
     def action_tests(self) -> None:
-        self.app.push_screen(PickScreen())
+        self.app.push_screen(CircleScreen())
 
     def action_guide(self) -> None:
         self.app.push_screen(GuideScreen())
@@ -309,7 +317,13 @@ class ProjectItem(ListItem):
         self.project = project
 
 
-class PickScreen(Screen):
+class CircleItem(ListItem):
+    def __init__(self, circle: str, title: str, meta: str) -> None:
+        super().__init__(Static(f"{circle}   {title}\n{meta}", classes="item"))
+        self.circle = circle
+
+
+class CircleScreen(Screen):
     BINDINGS = [
         Binding("escape", "back", "Back"),
         Binding("q", "quit", "Quit"),
@@ -317,6 +331,52 @@ class PickScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Static("Available tests", id="hero")
+        yield Static("Pick a circle.", id="status", classes="sub")
+        yield ListView(
+            CircleItem("00", "Circle 00", "libft · subject v19.2"),
+            CircleItem(
+                "01",
+                "Circle 01",
+                "get_next_line v14.3 · ft_printf v12.1 · push_swap v1.2",
+            ),
+            CircleItem("02", "Circle 02", "Python modules"),
+            id="projects",
+        )
+        yield Footer()
+
+    def on_mount(self) -> None:
+        view = self.query_one("#projects", ListView)
+        if view.children:
+            view.index = 0
+        view.focus()
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        item = event.item
+        if not isinstance(item, CircleItem):
+            return
+        if item.circle == "02":
+            self.app.push_screen(PythonScreen())
+            return
+        projects = _CIRCLE_00 if item.circle == "00" else _CIRCLE_01
+        self.app.push_screen(ProjectScreen(item.circle, projects))
+
+
+class ProjectScreen(Screen):
+    BINDINGS = [
+        Binding("escape", "back", "Back"),
+        Binding("q", "quit", "Quit"),
+    ]
+
+    def __init__(self, circle: str, projects: tuple[str, ...]) -> None:
+        super().__init__()
+        self.circle = circle
+        self.projects = projects
+
+    def compose(self) -> ComposeResult:
+        yield Static(f"Circle {self.circle}", id="hero")
         yield Static("Loading tests…", id="status", classes="sub")
         yield ListView(id="projects")
         yield Footer()
@@ -325,32 +385,59 @@ class PickScreen(Screen):
         self.run_worker(self._load, thread=True, exclusive=True)
 
     def _load(self) -> None:
+        counts: dict = {}
         try:
             catalog = load_catalog()
-        except CatalogError as exc:
-            self.app.call_from_thread(self._failed, str(exc))
-            return
-        self.app.call_from_thread(self._ready, catalog)
+        except CatalogError:
+            catalog = None
+        else:
+            self.app.catalog = catalog
+            counts = catalog.get("counts", {}).get("by_project", {})
+        self.app.call_from_thread(self._ready, counts)
 
-    def _failed(self, message: str) -> None:
-        self.query_one("#status", Static).update(message)
-
-    def _ready(self, catalog: dict) -> None:
-        self.app.catalog = catalog
-        counts = catalog.get("counts", {}).get("by_project", {})
+    def _ready(self, counts: dict) -> None:
         view = self.query_one("#projects", ListView)
-        for name in project_names(catalog):
-            label = _SUBJECT_LABEL.get(name, "runner not built yet")
-            if name not in _READY:
-                state = "runner not built yet"
-            elif name in {"get_next_line", "push_swap"}:
-                state = f"{label} · tests ready"
-            elif name in counts:
-                state = f"{counts[name]} catalog rows · {label}"
-            else:
-                state = label
-            view.append(ProjectItem(name, state))
+        for name in self.projects:
+            label = _SUBJECT_LABEL[name]
+            if name in counts:
+                label = f"{counts[name]} catalog rows · {label}"
+            view.append(ProjectItem(name, label))
         self.query_one("#status", Static).update("Pick a project. Enter opens it.")
+        if view.children:
+            view.index = 0
+        view.focus()
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        item = event.item
+        if isinstance(item, ProjectItem):
+            self.app.push_screen(PathScreen(item.project))
+
+
+class PythonScreen(Screen):
+    """Circle 02 is its own window. More modules are appended to PY_MODULES."""
+
+    BINDINGS = [
+        Binding("escape", "back", "Back"),
+        Binding("q", "quit", "Quit"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Static("Circle 02", id="hero")
+        yield Static("Python modules. Each row is the subject version.", id="status", classes="sub")
+        yield ListView(
+            *[
+                ProjectItem(item.name, _SUBJECT_LABEL[item.name])
+                for item in PY_MODULES
+            ],
+            id="projects",
+        )
+        yield Footer()
+
+    def on_mount(self) -> None:
+        view = self.query_one("#projects", ListView)
         if view.children:
             view.index = 0
         view.focus()
@@ -379,6 +466,8 @@ class PathScreen(Screen):
         hint = "Folder that contains the Makefile and the sources."
         if self.project == "get_next_line":
             hint = "Folder with get_next_line.c and get_next_line.h at the root."
+        elif self.project in {item.name for item in PY_MODULES}:
+            hint = "Folder with the exercise files, in ex0/, ex1/, and so on."
         if not ready:
             hint = "This project is in the catalog. The runner is not built yet."
         yield Static(self.project, id="hero")
@@ -428,6 +517,9 @@ class PathScreen(Screen):
             self.query_one("#look", Static).update(
                 "get_next_line.c and get_next_line.h found."
             )
+            return
+        if self.project in {item.name for item in PY_MODULES}:
+            self.query_one("#look", Static).update("Folder found.")
             return
         self.query_one("#look", Static).update("Makefile found.")
 

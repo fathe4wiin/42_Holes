@@ -14,7 +14,7 @@ def cli(folder: str) -> int:
         "ft_printf": "ft_printf.h",
         "get_next_line": "get_next_line.h",
         "push_swap": "push_swap",
-    }.get(name, "libft.h")
+    }.get(name, name if name.startswith("py-module-") else "libft.h")
     code = 0
     for event in run_project(name, root):
         if isinstance(event, Log):
@@ -51,6 +51,7 @@ def main(argv: list[str] | None = None) -> int:
         print("python3 holes.py /path/to/ft_printf")
         print("python3 holes.py /path/to/get_next_line")
         print("python3 holes.py /path/to/push_swap")
+        print("python3 holes.py /path/to/py-module-00")
         return 0
     return cli(args[0])
 

@@ -14,6 +14,7 @@ from cc_holes.catalog import load_catalog, project_tests
 from cc_holes.guide import write_log
 from cc_holes.harness import compile_driver, render_driver, run_driver
 from cc_holes.printf_cases import ROW_ORDER, ROW_PART, printf_groups
+from cc_holes.py_run import detect_module
 from cc_holes.subject_cases import subject_cases
 from cc_holes.model import (
     SUBJECT,
@@ -314,6 +315,9 @@ def project_of(root: Path) -> str:
     has_printf = find_printf_header(folder) is not None
     has_gnl = (folder / "get_next_line.c").is_file() and (folder / "get_next_line.h").is_file()
     has_swap = _has_named(folder, "push_swap.c")
+    py_module = detect_module(folder)
+    if py_module and not has_lib and not has_printf and not has_gnl and not has_swap:
+        return py_module
     if has_gnl and not has_lib and not has_printf:
         return "get_next_line"
     if has_swap and not has_lib and not has_printf and not has_gnl:
@@ -576,5 +580,10 @@ def run_project(name: str, root: Path, control: RunControl | None = None):
         from cc_holes.push_swap import run_push_swap
 
         yield from run_push_swap(root, control)
+    elif name.startswith("py-module-"):
+        # py_run imports runner events, so this import stays inside the function.
+        from cc_holes.py_run import run_py_module
+
+        yield from run_py_module(name, root, control)
     else:
         yield _blank_done("This runner is not built yet.")

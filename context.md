@@ -1,14 +1,20 @@
 # 42_Holes context
 
-Handoff as of 1 Nov 2026. Repo: `git@github.com:fathe4wiin/42_Holes.git`, branch `main`.
+Handoff as of 19 Nov 2026. Repo: `git@github.com:fathe4wiin/42_Holes.git`, branch `main`.
 
 ## What this is
 
-A Python TUI that grades a student's libft or ft_printf. Libft subject is `libft_subject.pdf`, v19.2. Lists are mandatory part 3, not a bonus. ft_printf subject is `cc_holes/prinf_subject.pdf`, v12.1 (the file name is missing the t).
+A Python TUI that grades 42 projects by circle.
 
-`francinette-tests.json` (schema `francinette-tests/1`) is the catalog. The subject wins when a stored case disagrees with it. Add a call when it breaks typical wrong code. Do not aim to cover every input. Part 1 is the exception: it must match libc, including a crash.
+| Circle | Projects | Subject |
+| --- | --- | --- |
+| 00 | libft | v19.2. Lists are mandatory part 3. |
+| 01 | get_next_line, ft_printf, push_swap | v14.3, v12.1, v1.2 |
+| 02 | py-module-00 through py-module-04 | v3.0, v3.2, v3.0, v3.1, v3.0 |
 
-libft and ft_printf run. `get_next_line` is listed and its Run button stays disabled.
+Subjects live in `subjects/`. Python subjects are `subjects/python_modules/en.subject_py-module-0N.pdf`. `subjects/checker_linux` is the school's push_swap checker and must stay executable. More Python modules will be added to `PY_MODULES` in `cc_holes/py_run.py`. Circle 02 is its own screen so that list can grow to about 12.
+
+`francinette-tests.json` (schema `francinette-tests/1`) is the catalog for libft and ft_printf. The subject wins when a stored case disagrees with it. push_swap is not in the catalog. get_next_line's catalog rows have no file bytes, so they are not replayed.
 
 Tagline, exact, under the logo:
 
@@ -23,117 +29,71 @@ curl -fsSL https://raw.githubusercontent.com/fathe4wiin/42_Holes/main/run.sh | b
 curl -fsSL https://raw.githubusercontent.com/fathe4wiin/42_Holes/main/run.sh | bash -s -- ~/libft
 ```
 
-`run.sh` installs `textual` for the user if it is missing. A piped run clones into `~/.cache/42_holes` (or `$XDG_CACHE_HOME/42_holes`). From this checkout, `./run.sh` uses this folder.
+`python3 holes.py` opens the TUI. `python3 holes.py /path` grades that folder. Exit 1 if any call failed, 2 on a build or setup error. A warning does not fail the run.
 
-`curl | bash` leaves the script on stdin. The TUI redirect is on the `exec` line (`</dev/tty`). A redirect on an earlier line makes bash read the rest of the script from the terminal. Raw GitHub can serve the previous `run.sh` for about 5 minutes after a push.
+On this machine the compiler wrapper on `PATH` cannot find `cc1`, and `sys.executable` points at a Cursor AppImage. Grade with `/usr/bin` first and the pyenv interpreter. The Python runner launches `prefix/bin/python3`, not `sys.executable`.
 
-`python3 holes.py` opens the TUI. `python3 holes.py /path/to/libft` grades that folder. Exit 1 if any call failed, 2 on a build or setup error. A warning does not fail the run.
+```sh
+PATH="/usr/bin:/bin:$PATH" /opt/pyenv/versions/3.13.1/bin/python3 holes.py /path
+```
 
-Needs Python 3 with pip, git, gcc, and make. `strlcpy`, `strlcat`, and `strnstr` retry the link with `-lbsd`.
-
-## Results
-
-Pass, Fail, Warn. The table columns are Function, Part, Pass, Fail, Warn, Note. The banner is `Pass N   Fail N   Warn N`.
-
-| Result | Meaning |
-| --- | --- |
-| Pass | Matched the subject, libc, or the stored value. Both crashing on the same undefined part 1 call is a pass. |
-| Fail | The call differed, or the function crashed where libc did not. A missing subject function is one Fail: `libft.h does not declare it`. |
-| Warn | libc crashed and the function returned, or a call the subject does not define crashed. A warning is not an error. |
-
-`42_holes.log` in the project folder lists FAIL and WARN only. A clean run still writes the header with `fail 0  warn 0`.
-
-Catalog rows that are only a name, a C++ assertion, a fuzzer, a sandbox, or a `rand()` buffer are dropped. They are not shown and not logged. `SKIP_WHY` in `guide.py` is unused. The guide subtitle in `app.py` still says "Skip"; the guide body does not.
-
-Last full run of `/tmp/cc-holes-ref-libft` (not in this repo, and `/tmp` can disappear): 875 pass, 0 fail, 0 warn, about 18 seconds. That tree calls libc on every part 1 function, and libbsd for `strlcpy`, `strlcat`, and `strnstr`. On this machine `strnstr(NULL, "a", 0)` returns. `strnstr(NULL, "a", 1)` and `strnstr("abc", NULL, 3)` segfault. A libft that reads the haystack when the length is 0 fails the first call. `toupper(-2)` is 254 and `tolower(-2)` is 254. `isalpha('A')` is 1024, so the reference returns 1. Part 2 NULL calls return without crashing, so those guards pass.
+Needs Python 3 with pip, git, gcc, and make. `strlcpy`, `strlcat`, and `strnstr` retry the link with `-lbsd`. Python modules also want `flake8` on that interpreter. A missing flake8 is one warning.
 
 ## Screens
 
-`HomeScreen` is a centered card, not the full terminal. `#brand` is 60% (logo and tagline), `#menu-slot` is 40%.
+Home keys, all `priority=True`: `a` available tests, `g` guide, `c` credits, `q` quit. The menu is a `ListView`. It needs `focus()` and an index or Enter does nothing.
 
-Home keys, all `priority=True`: `a` available tests, `g` guide, `c` credits, `q` quit. Arrows move. Enter opens the row. The menu is a `ListView`. It needs `focus()` and an index or Enter does nothing.
+`a` opens the circle list. Enter on circle 00 or 01 opens that circle's projects, each row showing the subject version. Enter on circle 02 opens the Python-module window. Escape goes back one screen. Enter on a project opens the path screen.
 
-`Available tests` pushes `PickScreen`. Escape returns home. Enter opens `PathScreen`. The path is the folder with the Makefile. `get_next_line` opens it with Run disabled.
-
-`RunScreen` keys: Escape back, `g` guide, `r` run again, `q` quit. Highlighting a row shows that function's fails, then its warnings.
+libft, ft_printf, and push_swap want a Makefile. get_next_line wants `get_next_line.c` and `get_next_line.h` at the folder root. A Python module wants the exercise files in `ex0/`, `ex1/`, and so on. A copy at the folder root is also accepted.
 
 `Static.content` is the text. There is no `renderable`.
 
-## Subject rules
+## Results
 
-From `libft_subject.pdf` v19.2.
+Pass, Fail, Warn. `42_holes.log` in the project folder lists FAIL and WARN only. Leaks are not graded. There is no malloc hook.
 
-- Part 1 is the libc functions through `strdup` (23). Part 2 is `substr` through `putnbr_fd` (11). Part 3 is the nine `ft_lst*` functions.
-- `isalpha`, `isdigit`, `isalnum`, `isascii`, `isprint` must return exactly 0 or 1. glibc `isalpha` returns 1024 for a letter. That fails. Other bools stay zero versus non-zero.
-- `isascii` is graded as a value. Do not call libc for it. `_POSIX_C_SOURCE 200809L` hides the function, and glibc's macro does not crash.
-- `toupper` / `tolower` of `EOF` is -1. Other out-of-range character mismatches are a warning (`soft`), not a fail.
-- `calloc(0, *)` must return a unique pointer `free` accepts. `calloc((size_t)-1, (size_t)-1)` is compared by nullness and the pointer is not freed.
-- Part 1 crash probes fork, silence stdio, and `alarm(1)`. libc crashed and the student returned: Warn. Student crashed and libc did not: Fail. Both crashed: Pass. Neither crashed on a pure crash probe: Pass.
-- Part 2 and list calls the subject does not define: a crash is Warn, a return is Pass.
-- `strncmp` and `memcmp` use the sign, not the magnitude.
-- A negative count in the catalog is a `size_t`, not zero. String oracles stop at NUL. `_pad_mem` only pads a `mem` role when `0 <= n <= 2_000_000`.
-- `ft_strncmp("1234", "1235", (size_t)-1)`, `ft_strnstr("aaabc", "abc", (size_t)-1)`, and the `strlcpy` / `strlcat` size `(size_t)-1` cases are real breakers.
-- Leaks are not graded. There is no malloc hook. `ft_lstdelone` checks that `del` was called, not that the node was freed.
+Last full run of `cc-holes-ref-libft`: 875 pass, 0 fail, 0 warn. That tree calls libc on part 1 and libbsd for `strlcpy`, `strlcat`, and `strnstr`. `is*` returns 0 or 1. On this machine `strnstr(NULL, "a", 0)` returns. `strnstr(NULL, "a", 1)` segfaults. A libft that reads the haystack when the length is 0 fails that call.
 
-## Pipeline
+## libft
 
-1. `make -C <folder>` with a 180s timeout. If make fails and `libft.a` exists, continue.
-2. Find `libft.h` in the root, `includes/`, `include/`, `inc/`, or `headers/`. Find `libft.a` in the root or one level down.
-3. Parse `ft_*` from the header after stripping comments.
-4. Group catalog tests by function. Append `subject_cases()` when the function is declared.
-5. `classify` decides run or drop. `concretize` may replace a named buffer with bytes or a C snippet.
-6. One driver per function: `gcc -Wall -Wextra -Wno-unused-function`. On link failure, retry with `-lbsd`.
-7. One child per call, `alarm(3)`. The parent reads only when `poll` is ready. A blocking read after a timeout hung the suite.
-8. Six tab fields, then `DONE`. Kinds include `int`, `size`, `null`, `bytes`, `mem`, `void`, `bad`, `lines`, `pair`, `ub`, and `guard`.
-9. `grade` compares the observation to libc or to the stored value.
-10. Write `42_holes.log`, including on cancel if anything was already graded.
+Part 1 must match libc, including a crash. Both crashing is a pass. libc crashed and the student returned: warn. Student crashed and libc did not: fail. `isalpha` must return 0 or 1, not glibc's 1024. `strncmp` and `memcmp` use the sign. Part 2 and list calls the subject does not define: a crash is a warning, a return is a pass.
 
-The `call` string is display text. Nothing evals it. Arguments come from `args`. `INT_MAX` is the string `2147483647` when the parameter is a C string. `(e + "1").c_str()` is tab, newline, vertical tab, form feed, carriage return, then the quoted tail.
+Named `mem` bytes come from `cc_holes/buffers.py`. The fills are copied in that file.
 
-Named `mem` / `dest` / `src` bytes come from `cc_holes/buffers.py`. fsoares `reset` fills `0x11` for `MEM_SIZE` 256. `rand()` rows have no saved bytes. Do not invent a seed.
+## ft_printf, get_next_line, push_swap
+
+ft_printf v12.1 compares stdout and the return value with `printf`. Mandatory is bare `cspdiuxX%`. Bonus is `-0.` with a width, then `#`, `+`, and space. Bonus fails are still reported when mandatory is not perfect.
+
+get_next_line v14.3 is compiled at `BUFFER_SIZE` 1 and 42. The newline stays on the line. A pipe whose write end stays open must return at the newline. A missing bonus is a warning.
+
+push_swap v1.2: `subjects/checker_linux` must print `OK`. No arguments prints nothing. Errors are `Error\n` on stderr. Three or fewer numbers must also be the shortest sequence. `--bench` needs the disorder percent, the strategy name, and the complexity. 100 numbers under 2000 operations. 500 under 12000. A missing student checker is a warning.
+
+## Python modules
+
+Each exercise is one row. `input()` does not echo through a pipe, so the typed text is not required on the prompt line. The prompts and the printed results are.
+
+- py-module-00 Growing Code v3.0. Exact text for the eight exercises. Exercise 6 needs `range` in the iterative file and a local call in the recursive file. Exercise 7 needs the typed signature. 60 days is not ready. 2 days does not need water.
+- py-module-01 Code Cultivation v3.2. The demo text is not matched word for word. `Plant`, `show`, `grow`, `age`, the setters, `Flower`, `Tree`, `Vegetable`, `Seed`, a static method, a class method, a nested class, and one free function are.
+- py-module-02 Garden Guardian v3.0. `input_temperature` accepts 0 and 40. 100 must say hot and 40. -50 must say cold and 0. `garden_operations(0..4)` raises `ValueError`, `ZeroDivisionError`, `FileNotFoundError`, `TypeError`, then returns. `PlantError` and `WaterError` inherit `GardenError`.
+- py-module-03 Data Quest v3.1. The printed examples are the expected text, including the score lines and the inventory percentages. `get_player_pos` returns `(1.0, 2.5, 3.0)` after a bad line. Distances are 4.0311 and 4.9244.
+- py-module-04 Data Archivist v3.0. A missing file reports an open error. Exercise 1 adds `#` to each line. Exercise 2 puts `[STDERR]` on stderr and must not call `input()`. `secure_archive` uses `with` and returns `(False, ...)` or `(True, text)`.
+
+`flake8` runs on the `*.py` files. A violation is a fail. The module is detected from `ex0/` plus its first exercise file.
 
 ## Files
 
 | Path | Role |
 | --- | --- |
-| `holes.py` | Launcher. Calls `cc_holes.__main__.main`. |
-| `run.sh` | Curl and local launcher. |
-| `cc_holes/catalog.py` | `json.load` the catalog. Order is libft, ft_printf, get_next_line, then the rest. |
-| `cc_holes/model.py` | Subject list, classify, oracles, `grade`. |
-| `cc_holes/harness.py` | C driver, crash probes, protocol. |
-| `cc_holes/buffers.py` | Named buffers from the vendor C. |
-| `cc_holes/subject_cases.py` | Subject snippets plus edge and breaker calls. |
-| `cc_holes/printf_cases.py` | ft_printf subject breakers and the catalog slice. v12.1 decides mandatory vs bonus. |
-| `cc_holes/runner.py` | make, plan, compile, run, log. Dropped cases are not recorded. |
-| `cc_holes/guide.py` | Logo, tagline, guide, credits, `write_log`. |
-| `cc_holes/app.py` | Textual screens and CSS. |
-| `francinette-tests.md` | Original catalog parse notes. The runner no longer surfaces skips. |
+| `holes.py` | Launcher. |
+| `cc_holes/app.py` | Screens. Circle list, then the project list or the Python window. |
+| `cc_holes/py_run.py` | Python-module registry, versions, and graders. |
+| `cc_holes/gnl_run.py` | get_next_line. |
+| `cc_holes/push_swap.py` | push_swap. Sort oracle is `subjects/checker_linux`. |
+| `cc_holes/runner.py` | make, libft, ft_printf, and `run_project`. |
+| `cc_holes/catalog.py` | Loads the catalog. |
+| `subjects/python_modules/` | The five Python subjects. |
 
-## Easy to break
+## Constraint
 
-- Capture stdout and stderr around the call, then restore the fds before the protocol `printf`.
-- NULs are a byte array plus a trailing NUL. Char arguments are the byte 0..255.
-- `emit_pair` is the strlcpy or strlcat return plus the buffer window.
-- The driver is GNU C, not `-std=c99`. The subject forbids `restrict` in the student's prototypes. That constraint is theirs.
-- New unused statics in the driver fail `-Werror` on unrelated functions unless marked unused. The compile line already passes `-Wno-unused-function`.
-- Escape `\n` inside generated C strings. war-machine's diagnostic keeps the typo `adress`.
-- `concretize` must ignore a case with no args. An empty crash row shares the name `ft_memset`.
-- A pipe into `awk` hides `holes.py`'s exit code.
-
-## ft_printf
-
-Subject v12.1. Mandatory is bare conversions `cspdiuxX%`. Bonus is flags `-0.` plus a minimum field width (a number or `*`), and flags `#`, `+`, and space. The catalog still marks some of those flags as mandatory. The subject wins.
-
-Stdout and the return value are compared with `printf` in one C driver. `%s` of NULL and `%p` of NULL follow this machine's libc. A `%c` of 0 must write a NUL byte. Leaks are not graded.
-
-Rows are per conversion, plus `text`, `mix`, `ft_printf -0.`, and `ft_printf #+`. Not every catalog row runs. Subject breakers always run. Then up to 24 formats per row, plus a few edge values (0, -1, empty, NULL, INT_MIN, UINT_MAX). Length modifiers, positional `%1$`, and conversions outside `cspdiuxX%` are dropped.
-
-`make`, then the mandatory rows. Then `make bonus`. If that fails or deletes `libftprintf.a`, bonus rows link the mandatory archive (a copy taken before `make bonus`). `ft_printf.h` is searched at the root and in `includes/`, `include/`, `inc/`, `headers/`, `src/`. `libft/libft.a` is linked when it exists. A library that is not at the repository root is a warning, and the run continues.
-
-42 grades bonus only when mandatory is perfect. This tester still reports bonus fails.
-
-## Still open
-
-- `get_next_line` has no runner.
-- No malloc interceptor, so a leak can pass.
-- The reference libft is only in `/tmp/cc-holes-ref-libft`. Recreate it before trusting the 875 / 0 / 0 numbers.
+Leaks are not graded. There is no malloc hook.

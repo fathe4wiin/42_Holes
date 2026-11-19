@@ -155,6 +155,18 @@ get_next_line (subject v14.3)
   Without get_next_line_bonus.c that row is a warning.
   Leaks are not graded.
 
+Circle 02, Python modules
+  py-module-00 Growing Code is subject v3.0. The functions print the
+  subject text. Exercise 7 needs the typed signature.
+  py-module-01 Code Cultivation is subject v3.2. The program output is
+  not matched word for word. The classes, methods, and protected data are.
+  py-module-02 Garden Guardian is subject v3.0. Temperatures outside 0..40
+  raise, and each garden_operations value raises the named error.
+  py-module-03 Data Quest is subject v3.1. The printed examples are the
+  expected text. Generators and comprehensions are checked in the file.
+  py-module-04 Data Archivist is subject v3.0. Exercise 2 sends errors to
+  stderr. secure_archive uses a with statement.
+
 push_swap (subject v1.2)
   The first argument is the top of stack a. subjects/checker_linux prints OK or KO.
   No arguments prints nothing. A bad integer or a duplicate prints Error and
@@ -214,6 +226,7 @@ against libft.a. libc is the oracle when the catalog does not store one.
 ft_printf is built the same way, against libftprintf.a, and compared with printf.
 get_next_line is compiled from the root files at two buffer sizes.
 push_swap is make, then subjects/checker_linux checks the operations. The student's checker is the bonus.
+Circle 02 grades py-module-00 through py-module-04 from subjects/python_modules.
 """
 
 
