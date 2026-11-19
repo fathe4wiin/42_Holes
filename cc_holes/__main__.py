@@ -4,16 +4,19 @@ import sys
 from pathlib import Path
 
 from cc_holes.app import HolesApp
-from cc_holes.runner import Done, Log, Update, project_of, run_libft, run_printf
+from cc_holes.runner import Done, Log, Update, project_of, run_project
 
 
 def cli(folder: str) -> int:
     root = Path(folder)
     name = project_of(root)
-    runner = run_printf if name == "ft_printf" else run_libft
-    header = "ft_printf.h" if name == "ft_printf" else "libft.h"
+    header = {
+        "ft_printf": "ft_printf.h",
+        "get_next_line": "get_next_line.h",
+        "push_swap": "push_swap",
+    }.get(name, "libft.h")
     code = 0
-    for event in runner(root):
+    for event in run_project(name, root):
         if isinstance(event, Log):
             print(event.text)
         elif isinstance(event, Update):
@@ -46,6 +49,8 @@ def main(argv: list[str] | None = None) -> int:
         print("python3 holes.py")
         print("python3 holes.py /path/to/libft")
         print("python3 holes.py /path/to/ft_printf")
+        print("python3 holes.py /path/to/get_next_line")
+        print("python3 holes.py /path/to/push_swap")
         return 0
     return cli(args[0])
 

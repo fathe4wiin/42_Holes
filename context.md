@@ -6,7 +6,7 @@ Handoff as of 1 Nov 2026. Repo: `git@github.com:fathe4wiin/42_Holes.git`, branch
 
 A Python TUI that grades a student's libft or ft_printf. Libft subject is `libft_subject.pdf`, v19.2. Lists are mandatory part 3, not a bonus. ft_printf subject is `cc_holes/prinf_subject.pdf`, v12.1 (the file name is missing the t).
 
-`francinette-tests.json` (schema `francinette-tests/1`) and `vendor/francinette/` were the kickstart. The subject wins when they disagree. Add a call when it breaks typical wrong code. Do not aim to cover every input. Part 1 is the exception: it must match libc, including a crash.
+`francinette-tests.json` (schema `francinette-tests/1`) is the catalog. The subject wins when a stored case disagrees with it. Add a call when it breaks typical wrong code. Do not aim to cover every input. Part 1 is the exception: it must match libc, including a crash.
 
 libft and ft_printf run. `get_next_line` is listed and its Run button stays disabled.
 
@@ -45,7 +45,7 @@ Pass, Fail, Warn. The table columns are Function, Part, Pass, Fail, Warn, Note. 
 
 Catalog rows that are only a name, a C++ assertion, a fuzzer, a sandbox, or a `rand()` buffer are dropped. They are not shown and not logged. `SKIP_WHY` in `guide.py` is unused. The guide subtitle in `app.py` still says "Skip"; the guide body does not.
 
-Last full run of `/tmp/cc-holes-ref-libft` (not in this repo, and `/tmp` can disappear): 846 pass, 1 fail, 28 warn, about 15 seconds. The fail is `ft_strnstr(NULL, "a", 0)`: libbsd returns, that copy reads the haystack first. `ft_strnstr(NULL, "a", 1)` both crash and passes. The warnings are out-of-range character calls and part 2 NULL crashes. `/tmp/cc-holes-bad` only breaks `ft_atoi`.
+Last full run of `/tmp/cc-holes-ref-libft` (not in this repo, and `/tmp` can disappear): 875 pass, 0 fail, 0 warn, about 18 seconds. That tree calls libc on every part 1 function, and libbsd for `strlcpy`, `strlcat`, and `strnstr`. On this machine `strnstr(NULL, "a", 0)` returns. `strnstr(NULL, "a", 1)` and `strnstr("abc", NULL, 3)` segfault. A libft that reads the haystack when the length is 0 fails the first call. `toupper(-2)` is 254 and `tolower(-2)` is 254. `isalpha('A')` is 1024, so the reference returns 1. Part 2 NULL calls return without crashing, so those guards pass.
 
 ## Screens
 
@@ -90,7 +90,7 @@ From `libft_subject.pdf` v19.2.
 
 The `call` string is display text. Nothing evals it. Arguments come from `args`. `INT_MAX` is the string `2147483647` when the parameter is a C string. `(e + "1").c_str()` is tab, newline, vertical tab, form feed, carriage return, then the quoted tail.
 
-Named `mem` / `dest` / `src` bytes come from `cc_holes/buffers.py`, which follows `vendor/francinette/`. fsoares `reset` fills `0x11` for `MEM_SIZE` 256. `rand()` rows have no saved bytes. Do not invent a seed.
+Named `mem` / `dest` / `src` bytes come from `cc_holes/buffers.py`. fsoares `reset` fills `0x11` for `MEM_SIZE` 256. `rand()` rows have no saved bytes. Do not invent a seed.
 
 ## Files
 
@@ -107,7 +107,6 @@ Named `mem` / `dest` / `src` bytes come from `cc_holes/buffers.py`, which follow
 | `cc_holes/runner.py` | make, plan, compile, run, log. Dropped cases are not recorded. |
 | `cc_holes/guide.py` | Logo, tagline, guide, credits, `write_log`. |
 | `cc_holes/app.py` | Textual screens and CSS. |
-| `vendor/francinette/` | fsoares and war-machine sources for the buffer fills. |
 | `francinette-tests.md` | Original catalog parse notes. The runner no longer surfaces skips. |
 
 ## Easy to break
@@ -137,4 +136,4 @@ Rows are per conversion, plus `text`, `mix`, `ft_printf -0.`, and `ft_printf #+`
 
 - `get_next_line` has no runner.
 - No malloc interceptor, so a leak can pass.
-- The reference libft is only in `/tmp`. Recreate it before trusting the 846 / 1 / 28 numbers.
+- The reference libft is only in `/tmp/cc-holes-ref-libft`. Recreate it before trusting the 875 / 0 / 0 numbers.

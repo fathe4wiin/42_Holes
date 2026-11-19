@@ -141,6 +141,11 @@ _SUBJECT: tuple[tuple[str, str, list], ...] = (
     ("plus-zero-pad", "%+08d", [42]),
     ("plus-zero-neg", "%+08d", [-42]),
     ("space-mix", "% d %d", [5, -3]),
+    ("pack-dcs", "%d%c%s", [42, 0, "Z"]),
+    ("u-min", "%u", [-2147483648]),
+    ("w-prec-zero", "%5.0d", [0]),
+    ("prec-s-null", "%.3s", [None]),
+    ("hash-left", "%#-10x", [255]),
 )
 
 

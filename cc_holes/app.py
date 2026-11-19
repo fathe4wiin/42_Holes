@@ -11,7 +11,7 @@ from textual.widgets import Button, DataTable, Footer, Input, ListItem, ListView
 
 from cc_holes.catalog import CatalogError, load_catalog, project_names
 from cc_holes.guide import CREDITS, GUIDE, LOGO, TAGLINE
-from cc_holes.runner import Done, Log, Plan, RunControl, Update, run_libft, run_printf
+from cc_holes.runner import Done, Log, Plan, RunControl, Update, run_project
 
 CSS = """
 Screen {
@@ -173,13 +173,32 @@ def normalize(text: str) -> Path:
     return path
 
 
-def path_problem(path: Path) -> str:
+_READY = {"libft", "ft_printf", "get_next_line", "push_swap"}
+_PLACEHOLDER = {
+    "libft": "/home/you/libft",
+    "ft_printf": "/home/you/ft_printf",
+    "get_next_line": "/home/you/get_next_line",
+    "push_swap": "/home/you/push_swap",
+}
+_SUBJECT_LABEL = {
+    "libft": "subject v19.2",
+    "ft_printf": "subject v12.1",
+    "get_next_line": "subject v14.3",
+    "push_swap": "subject v1.2",
+}
+
+
+def path_problem(path: Path, project: str | None = None) -> str:
     if not str(path).strip() or path == Path.cwd() / "":
         return ""
     if not path.exists():
         return "That folder does not exist."
     if not path.is_dir():
         return "That path is a file. Pass the project folder."
+    if project == "get_next_line":
+        if (path / "get_next_line.c").is_file() and (path / "get_next_line.h").is_file():
+            return ""
+        return "get_next_line.c and get_next_line.h were not found in that folder."
     names = ("Makefile", "makefile", "GNUmakefile")
     if not any((path / name).is_file() for name in names):
         return "No Makefile in that folder."
@@ -321,9 +340,16 @@ class PickScreen(Screen):
         counts = catalog.get("counts", {}).get("by_project", {})
         view = self.query_one("#projects", ListView)
         for name in project_names(catalog):
-            total = counts.get(name, 0)
-            state = "ready" if name in {"libft", "ft_printf"} else "runner not built yet"
-            view.append(ProjectItem(name, f"{total} tests · {state}"))
+            label = _SUBJECT_LABEL.get(name, "runner not built yet")
+            if name not in _READY:
+                state = "runner not built yet"
+            elif name in {"get_next_line", "push_swap"}:
+                state = f"{label} · tests ready"
+            elif name in counts:
+                state = f"{counts[name]} catalog rows · {label}"
+            else:
+                state = label
+            view.append(ProjectItem(name, state))
         self.query_one("#status", Static).update("Pick a project. Enter opens it.")
         if view.children:
             view.index = 0
@@ -349,15 +375,17 @@ class PathScreen(Screen):
         self.project = project
 
     def compose(self) -> ComposeResult:
-        ready = self.project in {"libft", "ft_printf"}
+        ready = self.project in _READY
         hint = "Folder that contains the Makefile and the sources."
+        if self.project == "get_next_line":
+            hint = "Folder with get_next_line.c and get_next_line.h at the root."
         if not ready:
             hint = "This project is in the catalog. The runner is not built yet."
         yield Static(self.project, id="hero")
         yield Static(hint, classes="sub")
         yield Input(
             value=self.app.paths.get(self.project, ""),
-            placeholder="/home/you/ft_printf" if self.project == "ft_printf" else "/home/you/libft",
+            placeholder=_PLACEHOLDER.get(self.project, "/home/you/project"),
             id="path",
         )
         yield Static("", id="look", classes="sub")
@@ -376,7 +404,7 @@ class PathScreen(Screen):
             self._look(event.value)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        if self.project in {"libft", "ft_printf"}:
+        if self.project in _READY:
             self._open(event.value)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -392,16 +420,21 @@ class PathScreen(Screen):
         if not text.strip():
             self.query_one("#look", Static).update("Paste the project folder.")
             return
-        problem = path_problem(normalize(text))
+        problem = path_problem(normalize(text), self.project)
         if problem:
             self.query_one("#look", Static).update(problem)
+            return
+        if self.project == "get_next_line":
+            self.query_one("#look", Static).update(
+                "get_next_line.c and get_next_line.h found."
+            )
             return
         self.query_one("#look", Static).update("Makefile found.")
 
     def _open(self, text: str) -> None:
         folder = normalize(text)
         self.app.paths[self.project] = text.strip()
-        problem = path_problem(folder)
+        problem = path_problem(folder, self.project)
         if problem:
             self.query_one("#look", Static).update(problem)
             return
@@ -449,14 +482,8 @@ class RunScreen(Screen):
         self.run_worker(self._job, thread=True, exclusive=True)
 
     def _job(self) -> None:
-        if self.project not in {"libft", "ft_printf"}:
-            self.app.call_from_thread(
-                self._apply, Done(0, 0, 0, 0, [], "This runner is not built yet.")
-            )
-            return
-        runner = run_printf if self.project == "ft_printf" else run_libft
         try:
-            for event in runner(Path(self.folder), self._control):
+            for event in run_project(self.project, Path(self.folder), self._control):
                 self.app.call_from_thread(self._apply, event)
         except Exception as exc:
             self.app.call_from_thread(self._apply, Done(0, 0, 0, 0, [], str(exc)))

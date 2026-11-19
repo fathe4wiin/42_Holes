@@ -1,0 +1,8 @@
+42_Holes
+a TUI project to test your 42 project, made by student for students
+project: /tmp/cc-holes-ref-libft
+fail 0  warn 0
+
+FAIL is an error. WARN is libc crashing while your function returned,
+or a crash on a call the subject does not define. A warning is not an error.
+Passes are not listed.

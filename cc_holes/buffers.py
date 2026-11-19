@@ -1,8 +1,7 @@
-"""Fill harness names from the fsoares and war-machine sources.
+"""Fill harness names from the fsoares and war-machine fills.
 
-`mem` and `dest` in the catalog are names. The bytes live in
-vendor/francinette: fsoares `reset` writes 0x11 across 256 bytes
-(utils/utils.c), and each war-machine main.c writes its own fill.
+`mem` and `dest` in the catalog are names. fsoares `reset` writes
+0x11 across 256 bytes. Each war-machine fill is copied below.
 """
 
 import ctypes

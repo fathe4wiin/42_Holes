@@ -36,8 +36,8 @@ def load_catalog() -> dict:
 def project_names(data: dict) -> list[str]:
     """Known projects first, then anything else the catalog added."""
     counts = data.get("counts", {}).get("by_project", {})
-    ordered = ["libft", "ft_printf", "get_next_line"]
-    names = [name for name in ordered if name in counts]
+    ordered = ["libft", "ft_printf", "get_next_line", "push_swap"]
+    names = list(ordered)
     names.extend(sorted(name for name in counts if name not in names))
     return names
 

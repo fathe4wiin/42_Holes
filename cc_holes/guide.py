@@ -138,11 +138,35 @@ ft_printf (subject v12.1)
   Mandatory is the conversions c s p d i u x X and %%. No flags, no width.
   Stdout and the return value are compared with printf, including %s of NULL
   and %p of NULL. A NUL from %c is a real byte.
+  %.3s of NULL, %5.0d of 0, %u of INT_MIN, and %#-10x are in the subject rows.
   Bonus is tested too. One row is the flags - 0 . and a minimum width, including *.
   The other row is the flags #, +, and space.
   make builds the mandatory library. Bonus calls run after make bonus.
   If that rule fails, those calls use the library from make.
   42 grades bonus only when mandatory is perfect. This tester still reports it.
+
+get_next_line (subject v14.3)
+  The files are get_next_line.c and get_next_line.h at the repository root.
+  A line keeps its newline. The last line of a file that has none does not.
+  NULL means the file is finished, or the descriptor cannot be read.
+  The same files are compiled with BUFFER_SIZE 1 and BUFFER_SIZE 42.
+  A pipe that stays open must return at the newline, not wait for the end.
+  The bonus reads two descriptors on alternate calls.
+  Without get_next_line_bonus.c that row is a warning.
+  Leaks are not graded.
+
+push_swap (subject v1.2)
+  The first argument is the top of stack a. subjects/checker_linux prints OK or KO.
+  No arguments prints nothing. A bad integer or a duplicate prints Error and
+  a newline on stderr, and nothing on stdout.
+  An already sorted stack prints nothing. Three numbers or fewer must use the
+  shortest list. --simple, --medium, --complex, and --adaptive must all sort.
+  --bench writes to stderr: the disorder as a percent with two decimals, the
+  strategy name (simple, medium, complex, or adaptive), the complexity
+  (n^2, n sqrt n, or n log n), and a count for every operation.
+  Adaptive uses n^2 under 20%, n sqrt n from 20% up to 50%, and n log n at
+  50% or more. 100 numbers must stay under 2000 operations. 500 under 12000.
+  make bonus builds checker. A missing checker is a warning.
 
 What a call is
   The call is the line you would write, for example:
@@ -188,7 +212,8 @@ libft is built with your Makefile, then each direct call is linked
 against libft.a. libc is the oracle when the catalog does not store one.
 
 ft_printf is built the same way, against libftprintf.a, and compared with printf.
-get_next_line is listed. Its runner is not built yet.
+get_next_line is compiled from the root files at two buffer sizes.
+push_swap is make, then subjects/checker_linux checks the operations. The student's checker is the bonus.
 """
 
 

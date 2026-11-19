@@ -299,13 +299,25 @@ def find_printf_archive(root: Path) -> tuple[Path | None, bool]:
     return None, False
 
 
+def _has_named(folder: Path, name: str) -> bool:
+    if (folder / name).is_file():
+        return True
+    return any((folder / directory / name).is_file() for directory in ("src", "srcs", "sources"))
+
+
 def project_of(root: Path) -> str:
-    """CLI picks ft_printf when that header is the project being built."""
+    """CLI picks the project from the files in the folder."""
     folder = root.expanduser()
     if not folder.is_absolute():
         folder = Path.cwd() / folder
     has_lib = find_header(folder) is not None
     has_printf = find_printf_header(folder) is not None
+    has_gnl = (folder / "get_next_line.c").is_file() and (folder / "get_next_line.h").is_file()
+    has_swap = _has_named(folder, "push_swap.c")
+    if has_gnl and not has_lib and not has_printf:
+        return "get_next_line"
+    if has_swap and not has_lib and not has_printf and not has_gnl:
+        return "push_swap"
     if not has_printf:
         return "libft"
     if not has_lib:
@@ -546,3 +558,23 @@ def run_printf(root: Path, control: RunControl | None = None):
     if log_error:
         yield Log(f"Could not write 42_holes.log: {log_error}")
     yield Done(passed, failed, skipped, 0, [], None, log_path, warned)
+
+
+def run_project(name: str, root: Path, control: RunControl | None = None):
+    """Run the grader for one menu project."""
+    if name == "libft":
+        yield from run_libft(root, control)
+    elif name == "ft_printf":
+        yield from run_printf(root, control)
+    elif name == "get_next_line":
+        # gnl_run imports runner events, so this import stays inside the function.
+        from cc_holes.gnl_run import run_gnl
+
+        yield from run_gnl(root, control)
+    elif name == "push_swap":
+        # push_swap imports runner events, so this import stays inside the function.
+        from cc_holes.push_swap import run_push_swap
+
+        yield from run_push_swap(root, control)
+    else:
+        yield _blank_done("This runner is not built yet.")
