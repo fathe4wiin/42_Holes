@@ -51,7 +51,7 @@ libft, ft_printf, and push_swap want a Makefile. get_next_line wants `get_next_l
 
 ## Results
 
-Pass, Fail, Warn. `42_holes.log` in the project folder lists FAIL and WARN only. Leaks are not graded. There is no malloc hook.
+Pass, Fail, Warn. `42_holes.log` in the project folder lists FAIL and WARN only. libft and ft_printf leaks are not graded. push_swap and get_next_line are checked with valgrind. A leak is a fail.
 
 Last full run of `cc-holes-ref-libft`: 875 pass, 0 fail, 0 warn. That tree calls libc on part 1 and libbsd for `strlcpy`, `strlcat`, and `strnstr`. `is*` returns 0 or 1. On this machine `strnstr(NULL, "a", 0)` returns. `strnstr(NULL, "a", 1)` segfaults. A libft that reads the haystack when the length is 0 fails that call.
 
@@ -65,9 +65,9 @@ Named `mem` bytes come from `cc_holes/buffers.py`. The fills are copied in that 
 
 ft_printf v12.1 compares stdout and the return value with `printf`. Mandatory is bare `cspdiuxX%`. Bonus is `-0.` with a width, then `#`, `+`, and space. Bonus fails are still reported when mandatory is not perfect.
 
-get_next_line v14.3 is compiled at `BUFFER_SIZE` 1 and 42. The newline stays on the line. A pipe whose write end stays open must return at the newline. A missing bonus is a warning.
+get_next_line v14.3 is compiled at `BUFFER_SIZE` 1 and 42. The newline stays on the line. A pipe whose write end stays open must return at the newline. A missing bonus is a warning. Valgrind checks a full read at `BUFFER_SIZE` 1. The open pipe is not a leak check.
 
-push_swap v1.2: `subjects/checker_linux` must print `OK`. No arguments prints nothing. Errors are `Error\n` on stderr. Three or fewer numbers must also be the shortest sequence. `--bench` needs the disorder percent, the strategy name, and the complexity. 100 numbers under 2000 operations. 500 under 12000. A missing student checker is a warning.
+push_swap v1.2: `subjects/checker_linux` must print `OK`. No arguments prints nothing. `push_swap 4 5` is two integers and is not an error. Errors are `Error\n` on stderr. Three or fewer numbers must also be the shortest sequence. `--bench` needs the disorder percent, the strategy name, and the complexity. 100 numbers under 2000 operations. 500 under 12000. Valgrind checks the small runs. A missing student checker is a warning. The checker prints OK only when stack a is sorted and stack b is empty. `checker 99 1 2 3 4` with `pb` is KO. An empty line, a trailing space, or an instruction with no newline is Error.
 
 ## Python modules
 
@@ -96,4 +96,4 @@ Each exercise is one row. `input()` does not echo through a pipe, so the typed t
 
 ## Constraint
 
-Leaks are not graded. There is no malloc hook.
+libft and ft_printf have no malloc hook. push_swap and get_next_line leaks are graded with valgrind.

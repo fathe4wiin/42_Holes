@@ -153,7 +153,8 @@ get_next_line (subject v14.3)
   A pipe that stays open must return at the newline, not wait for the end.
   The bonus reads two descriptors on alternate calls.
   Without get_next_line_bonus.c that row is a warning.
-  Leaks are not graded.
+  Valgrind checks a full read at BUFFER_SIZE 1. A leak is a fail.
+  A pipe that stays open is not a leak check. The leftover buffer is still in use.
 
 Circle 02, Python modules
   py-module-00 Growing Code is subject v3.0. The functions print the
@@ -171,6 +172,7 @@ push_swap (subject v1.2)
   The first argument is the top of stack a. subjects/checker_linux prints OK or KO.
   No arguments prints nothing. A bad integer or a duplicate prints Error and
   a newline on stderr, and nothing on stdout.
+  push_swap 4 5 is two integers. It is not an error.
   An already sorted stack prints nothing. Three numbers or fewer must use the
   shortest list. --simple, --medium, --complex, and --adaptive must all sort.
   --bench writes to stderr: the disorder as a percent with two decimals, the
@@ -179,6 +181,13 @@ push_swap (subject v1.2)
   Adaptive uses n^2 under 20%, n sqrt n from 20% up to 50%, and n log n at
   50% or more. 100 numbers must stay under 2000 operations. 500 under 12000.
   make bonus builds checker. A missing checker is a warning.
+  checker prints OK only when stack a is sorted and stack b is empty.
+  checker 99 1 2 3 4 with pb is KO: a is 1 2 3 4 and b still holds 99.
+  Pushing the only number, or every number, into b is KO too.
+  No instructions on a sorted stack is OK. No instructions on an unsorted
+  stack is KO. An empty line, a trailing space, PB, or an instruction
+  with no newline is Error.
+  Valgrind checks the small runs, including push_swap 4 5. A leak is a fail.
 
 What a call is
   The call is the line you would write, for example:

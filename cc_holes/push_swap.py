@@ -2,10 +2,12 @@
 
 The first argument is the top of stack a. subjects/checker_linux runs the
 operations and prints OK or KO. Already-sorted input must print nothing.
-Inputs of 3 or fewer must use the shortest sequence. --bench writes the
-disorder, the strategy, the complexity, and the operation counts to stderr.
-100 and 500 numbers use the subject's pass limits. The student's checker
-from make bonus is a separate row.
+push_swap 4 5 is two integers, so it is a sort, not an error. Inputs of 3
+or fewer must use the shortest sequence. --bench writes the disorder, the
+strategy, the complexity, and the operation counts to stderr. 100 and 500
+numbers use the subject's pass limits. Valgrind checks the small runs.
+The student's checker from make bonus is a separate row. OK means stack a
+is sorted and stack b is empty. pb on 99 1 2 3 4 is KO.
 """
 
 import os
@@ -17,10 +19,39 @@ import tempfile
 from collections import deque
 from pathlib import Path
 
+from cc_holes.leaks import check_leaks, valgrind_available
 from cc_holes.model import Outcome, build_row
 
 _OPS = ("sa", "sb", "ss", "pa", "pb", "ra", "rb", "rr", "rra", "rrb", "rrr")
 _FLAGS = ("--simple", "--medium", "--complex", "--adaptive")
+# name, arguments, stdin, expected stdout or Error, display line
+_CHECKER_CASES = (
+    ("b-not-empty", ["99", "1", "2", "3", "4"], b"pb\n", "KO", "checker 99 1 2 3 4 < pb"),
+    ("a-empty", ["1"], b"pb\n", "KO", "checker 1 < pb"),
+    ("one-left", ["2", "1"], b"pb\n", "KO", "checker 2 1 < pb"),
+    ("looks-sorted", ["3", "1", "2"], b"pb\n", "KO", "checker 3 1 2 < pb"),
+    ("all-to-b", ["1", "2", "3"], b"pb\npb\npb\n", "KO", "checker 1 2 3 < pb pb pb"),
+    ("sorted-quiet", ["1", "2", "3"], b"", "OK", "checker 1 2 3"),
+    ("unsorted-quiet", ["2", "1"], b"", "KO", "checker 2 1"),
+    ("sa-sorts", ["2", "1"], b"sa\n", "OK", "checker 2 1 < sa"),
+    ("not-sorted", ["3", "2", "1"], b"sa\n", "KO", "checker 3 2 1 < sa"),
+    ("pb-pa", ["1", "2", "3"], b"pb\npa\n", "OK", "checker 1 2 3 < pb pa"),
+    ("ra-unsorts", ["1", "2", "3"], b"ra\n", "KO", "checker 1 2 3 < ra"),
+    ("rra-sorts", ["2", "3", "1"], b"rra\n", "OK", "checker 2 3 1 < rra"),
+    ("noop-sa", ["1"], b"sa\n", "OK", "checker 1 < sa"),
+    ("noop-pa", ["1", "2", "3"], b"pa\n", "OK", "checker 1 2 3 < pa"),
+    ("negatives", ["-2", "-1", "0"], b"", "OK", "checker -2 -1 0"),
+    ("int-edges", ["-2147483648", "0", "2147483647"], b"", "OK", "checker -2147483648 0 2147483647"),
+    ("duplicate", ["1", "2", "1"], b"", "Error", "checker 1 2 1"),
+    ("above-int", ["2147483648"], b"", "Error", "checker 2147483648"),
+    ("below-int", ["-2147483649"], b"", "Error", "checker -2147483649"),
+    ("empty-arg", ["", "1"], b"", "Error", 'checker "" 1'),
+    ("empty-line", ["1", "2"], b"\n", "Error", "checker 1 2 < empty line"),
+    ("trailing-space", ["1", "2"], b"pb \n", "Error", 'checker 1 2 < "pb "'),
+    ("uppercase", ["1", "2"], b"PB\n", "Error", "checker 1 2 < PB"),
+    ("no-newline", ["2", "1"], b"sa", "Error", "checker 2 1 < sa (no newline)"),
+    ("bad-op", ["3", "2", "1"], b"nope\n", "Error", "checker 3 2 1 < nope"),
+)
 _SCHOOL = Path(__file__).resolve().parent.parent / "subjects" / "checker_linux"
 
 
@@ -168,6 +199,18 @@ def _error_text(problem: str | None, stdout: bytes, stderr: bytes) -> str | None
         return "stdout is not empty"
     if stderr != b"Error\n":
         return "stderr is not Error followed by a newline"
+    return None
+
+
+def _checker_expect(problem: str | None, stdout: bytes, stderr: bytes, expect: str) -> str | None:
+    """None when the checker printed OK, KO, or Error as the subject requires."""
+    if expect == "Error":
+        return _error_text(problem, stdout, stderr)
+    if problem:
+        return problem
+    wanted = f"{expect}\n".encode()
+    if stderr or stdout != wanted:
+        return f"stdout is not {expect}"
     return None
 
 
@@ -347,6 +390,7 @@ def run_push_swap(root: Path, control=None):
         "bench": [],
         "100 numbers": [],
         "500 numbers": [],
+        "leaks": [],
         "checker": [],
     }
 
@@ -358,6 +402,7 @@ def run_push_swap(root: Path, control=None):
     add("arguments", "no-args", "push_swap", "fail" if why else "pass", why or "printed nothing")
     for label, values in (
         ("one", [42]),
+        ("pair", [4, 5]),
         ("sorted", [1, 2, 3, 4]),
         ("ends", [-2147483648, 0, 2147483647]),
     ):
@@ -371,7 +416,6 @@ def run_push_swap(root: Path, control=None):
         ("above-int", ["2147483648"]),
         ("below-int", ["-2147483649"]),
         ("empty", [""]),
-        ("spaces", ["4 5"]),
         ("same-value", ["+1", "01"]),
         ("flag-dup", ["--simple", "3", "2", "3"]),
     )
@@ -437,6 +481,21 @@ def run_push_swap(root: Path, control=None):
         else:
             rank = "excellent" if total < excellent else "good" if total < good else "pass"
             add(row, "random", f"push_swap <{count} numbers>", "pass", f"{rank}, {total} operations")
+    if not valgrind_available():
+        add("leaks", "valgrind", "valgrind", "warn", "valgrind is not installed")
+    else:
+        leak_calls: list[tuple[str, list[str]]] = [
+            ("push_swap", []),
+            ("push_swap 4 5", ["4", "5"]),
+            ("push_swap 2 1", ["2", "1"]),
+            ("push_swap 1 3 2", ["1", "3", "2"]),
+            ("push_swap 0 one 2", ["0", "one", "2"]),
+            ("push_swap --bench --adaptive 3 2 1", ["--bench", "--adaptive", "3", "2", "1"]),
+            ("push_swap <10 numbers>", [str(number) for number in _sample(10, 10)]),
+        ]
+        for label, args in leak_calls:
+            status, detail = check_leaks(binary, args, timeout=30)
+            add("leaks", "valgrind", label, status, detail)
     handle, copied_name = tempfile.mkstemp(prefix="cc-holes-ps-")
     os.close(handle)
     copied = Path(copied_name)
@@ -473,16 +532,10 @@ def run_push_swap(root: Path, control=None):
                 add("checker", "ok", "push_swap | checker", "fail", "stdout is not OK", "bonus")
             else:
                 add("checker", "ok", "push_swap | checker", "pass", "OK", "bonus")
-        problem, stdout, stderr = _invoke(checker, ["3", "2", "1"], stdin=b"sa\n")
-        if problem:
-            add("checker", "ko", "checker 3 2 1 < sa", "fail", problem, "bonus")
-        elif stdout != b"KO\n":
-            add("checker", "ko", "checker 3 2 1 < sa", "fail", "stdout is not KO", "bonus")
-        else:
-            add("checker", "ko", "checker 3 2 1 < sa", "pass", "KO", "bonus")
-        problem, stdout, stderr = _invoke(checker, ["3", "2", "1"], stdin=b"nope\n")
-        why = _error_text(problem, stdout, stderr)
-        add("checker", "bad-op", "checker < nope", "fail" if why else "pass", why or "Error", "bonus")
+        for name, args, stdin, expect, call in _CHECKER_CASES:
+            problem, stdout, stderr = _invoke(checker, args, stdin=stdin)
+            why = _checker_expect(problem, stdout, stderr, expect)
+            add("checker", name, call, "fail" if why else "pass", why or expect, "bonus")
     copied.unlink(missing_ok=True)
     order = (
         ("arguments", "mandatory"),
@@ -492,6 +545,7 @@ def run_push_swap(root: Path, control=None):
         ("bench", "mandatory"),
         ("100 numbers", "mandatory"),
         ("500 numbers", "mandatory"),
+        ("leaks", "mandatory"),
         ("checker", "bonus"),
     )
     rows = [build_row(name, groups[name], True, part=part) for name, part in order]

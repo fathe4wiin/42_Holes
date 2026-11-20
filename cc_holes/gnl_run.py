@@ -4,12 +4,14 @@ The line includes the newline, except the last line of a file that has none.
 NULL means the file is finished or the descriptor is unusable. A call must
 return when it has a newline, without waiting for the end of the file.
 Bonus is several descriptors at once, and only runs when the bonus files exist.
+Valgrind checks a full read. A leak is a fail.
 """
 
 import subprocess
 import tempfile
 from pathlib import Path
 
+from cc_holes.leaks import check_leaks, valgrind_available
 from cc_holes.model import Outcome, build_row, outcome_from
 
 _SIZES = (1, 42)
@@ -310,6 +312,7 @@ def run_gnl(root: Path, control=None):
     yield Log("Compiling get_next_line at BUFFER_SIZE 1 and 42.")
     outcomes: list[Outcome] = []
     bonus_outcomes: list[Outcome] = []
+    leak_outcomes: list[Outcome] = []
     with tempfile.TemporaryDirectory(prefix="cc-holes-gnl-") as temporary:
         work = Path(temporary)
         binaries: dict[int, Path] = {}
@@ -336,6 +339,7 @@ def run_gnl(root: Path, control=None):
             "pipe-open": b"ab\nMORE",
             "pipe-close": b"ab\ncd",
         }
+        leak_jobs: list[tuple[str, list[str]]] = []
         for name, mode, wanted in _cases():
             if mode == "file":
                 path = _write(work, name.replace(" ", "_"), payloads["file"][name])
@@ -348,6 +352,8 @@ def run_gnl(root: Path, control=None):
             else:
                 path = _write(work, "pipe-close", payloads["pipe-close"])
                 args = ["pipe", str(path), "close"]
+            if mode != "pipe-open":
+                leak_jobs.append((name, args))
             failed = None
             for size in _SIZES:
                 problem, got = _run(binaries[size], args)
@@ -406,18 +412,41 @@ def run_gnl(root: Path, control=None):
                     "bonus",
                 )
             )
+        if not valgrind_available():
+            leak_outcomes.append(
+                _one("subject/gnl/leaks", "valgrind", "warn", "valgrind is not installed", "mandatory")
+            )
+        else:
+            for name, args in leak_jobs:
+                status, detail = check_leaks(binaries[1], args, timeout=20)
+                leak_outcomes.append(_one(f"subject/gnl/leak/{name}", name, status, detail, "mandatory"))
+            if bonus_c.is_file() and bonus_h.is_file() and (work / "gnl-bonus").is_file():
+                left = work / "bonus-a"
+                right = work / "bonus-b"
+                status, detail = check_leaks(
+                    work / "gnl-bonus", ["two", str(left), str(right)], timeout=20
+                )
+                leak_outcomes.append(
+                    _one("subject/gnl/leak/bonus", "two descriptors", status, detail, "bonus")
+                )
     rows = [
         build_row("get_next_line", outcomes, True, part="mandatory"),
         build_row("multiple fds", bonus_outcomes, True, part="bonus"),
+        build_row("leaks", leak_outcomes, True, part="mandatory"),
     ]
     yield Plan(rows)
     for row in rows:
         yield Update(row)
-    sections = [("get_next_line", outcomes), ("multiple fds", bonus_outcomes)]
+    sections = [
+        ("get_next_line", outcomes),
+        ("multiple fds", bonus_outcomes),
+        ("leaks", leak_outcomes),
+    ]
     log_path, log_error = _save_log(folder, sections)
     if log_error:
         yield Log(f"Could not write 42_holes.log: {log_error}")
-    passed = sum(item.status == "pass" for item in outcomes + bonus_outcomes)
-    failed = sum(item.status == "fail" for item in outcomes + bonus_outcomes)
-    warned = sum(item.status == "warn" for item in outcomes + bonus_outcomes)
+    everything = outcomes + bonus_outcomes + leak_outcomes
+    passed = sum(item.status == "pass" for item in everything)
+    failed = sum(item.status == "fail" for item in everything)
+    warned = sum(item.status == "warn" for item in everything)
     yield Done(passed, failed, 0, 0, [], None, log_path, warned)
